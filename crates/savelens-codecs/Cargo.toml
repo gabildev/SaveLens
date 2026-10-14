@@ -1,6 +1,42 @@
 [package]
 name = "savelens-codecs"
+description = "Reversible envelope pipeline (crypto, checksum, compression) and lossless structural codecs for SaveLens"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
 
 [dependencies]
+savelens-core.workspace = true
+thiserror.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+toml.workspace = true
+indexmap.workspace = true
+blake3.workspace = true
+hex.workspace = true
+tracing.workspace = true
+flate2.workspace = true
+lz4_flex.workspace = true
+zstd.workspace = true
+base64.workspace = true
+aes.workspace = true
+cbc.workspace = true
+ecb.workspace = true
+ctr.workspace = true
+pbkdf2.workspace = true
+hmac.workspace = true
+sha1.workspace = true
+sha2.workspace = true
+md-5.workspace = true
+crc32fast.workspace = true
+crc32c.workspace = true
+rusqlite.workspace = true
+tempfile.workspace = true
+dirs.workspace = true
+glob.workspace = true
+
+[dev-dependencies]
+proptest.workspace = true

@@ -1,0 +1,32 @@
+# SaveLens built-in encryption / obfuscation profiles.
+#
+# This file is embedded into the binary. Users can add or override profiles in
+#   $SAVELENS_HOME/game_keys.toml              (if SAVELENS_HOME is set)
+#   <config dir>/savelens/game_keys.toml       (~/.config/savelens on Linux,
+#                                                %APPDATA%\savelens on Windows)
+# User profiles are tried before the built-in ones. See the repository-level
+# `game_keys.toml` for a fully documented example of every field.
+#
+# Selection rules, in order:
+#   1. profiles whose `app_ids` contain the Steam AppID of the game,
+#   2. profiles whose `file_patterns` glob matches the save file name,
+#   3. profiles marked `generic = true` (tried on any high-entropy payload).
+# A profile is only accepted when the decrypted payload is recognised by the
+# pipeline (compression magic or a structural codec), so trying a wrong
+# profile can never corrupt anything.
+
+[[profile]]
+name = "es3-default"
+description = "Unity Easy Save 3 with its stock password (ES3Settings.encryptionPassword default)."
+scheme = "es3"
+password = "password"
+file_patterns = ["*.es3", "SaveFile.es3"]
+generic = true
+
+[[profile]]
+name = "phasmophobia"
+description = "Phasmophobia (Unity, Easy Save 3). Password as documented by the community save-editor projects."
+scheme = "es3"
+password = "t36gref9u84y7f43g"
+app_ids = [739630]
+file_patterns = ["SaveFile.txt"]
