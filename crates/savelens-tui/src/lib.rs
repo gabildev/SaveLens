@@ -16,6 +16,7 @@
 
 mod app;
 mod jobs;
+mod questions;
 mod tabs;
 mod theme;
 mod tree;

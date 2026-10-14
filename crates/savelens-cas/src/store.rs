@@ -134,6 +134,49 @@ CREATE TABLE IF NOT EXISTS daemon_status (
     heartbeat INTEGER NOT NULL,
     info TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS watch_questions (
+    id INTEGER PRIMARY KEY,
+    game_id INTEGER NOT NULL REFERENCES games(id) ON DELETE CASCADE,
+    rel_path TEXT NOT NULL,
+    location_key TEXT NOT NULL,
+    location TEXT NOT NULL,
+    old_value TEXT NOT NULL,
+    new_value TEXT NOT NULL,
+    guess TEXT,
+    score INTEGER NOT NULL,
+    flag INTEGER NOT NULL DEFAULT 0,
+    status TEXT NOT NULL,
+    category TEXT,
+    alias TEXT,
+    snooze_until INTEGER,
+    times_seen INTEGER NOT NULL DEFAULT 1,
+    commit_id INTEGER,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL,
+    UNIQUE (game_id, rel_path, location_key)
+);
+CREATE INDEX IF NOT EXISTS watch_questions_status ON watch_questions(status, id);
+CREATE TABLE IF NOT EXISTS watch_mutes (
+    id INTEGER PRIMARY KEY,
+    game_id INTEGER NOT NULL REFERENCES games(id) ON DELETE CASCADE,
+    rel_path TEXT NOT NULL DEFAULT '',
+    pattern TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    UNIQUE (game_id, rel_path, pattern)
+);
+CREATE TABLE IF NOT EXISTS watch_volatility (
+    game_id INTEGER NOT NULL REFERENCES games(id) ON DELETE CASCADE,
+    rel_path TEXT NOT NULL,
+    location_key TEXT NOT NULL,
+    stats TEXT NOT NULL,
+    PRIMARY KEY (game_id, rel_path, location_key)
+);
+CREATE TABLE IF NOT EXISTS watch_saves (
+    game_id INTEGER NOT NULL REFERENCES games(id) ON DELETE CASCADE,
+    rel_path TEXT NOT NULL,
+    saves INTEGER NOT NULL,
+    PRIMARY KEY (game_id, rel_path)
+);
 CREATE TABLE IF NOT EXISTS requests (
     id INTEGER PRIMARY KEY,
     at INTEGER NOT NULL,
@@ -507,6 +550,9 @@ impl Store {
         tx.execute("DELETE FROM tags WHERE game_id = ?1", params![game])?;
         tx.execute("DELETE FROM branches WHERE game_id = ?1", params![game])?;
         tx.execute("DELETE FROM cheat_table WHERE game_id = ?1", params![game])?;
+        for table in ["watch_questions", "watch_mutes", "watch_volatility", "watch_saves"] {
+            tx.execute(&format!("DELETE FROM {table} WHERE game_id = ?1"), params![game])?;
+        }
         tx.execute(
             "DELETE FROM changelogs WHERE commit_id IN (SELECT id FROM commits WHERE game_id = ?1)",
             params![game],

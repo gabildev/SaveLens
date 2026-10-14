@@ -4,7 +4,8 @@
 //! Steam discovery and the live auto-hunter, a commit graph timeline, the
 //! Scanner Studio with its cheat table, a visual tree diff & cherry-picker,
 //! an AST editor guarded by the Safe Edit Gate, an activity log, integrity
-//! chips and the panic-restore button.
+//! chips, the panic-restore button and the floating "What changed?"
+//! window ([`questions`]).
 //!
 //! Every engine call runs off the UI thread ([`jobs`]); the UI state is a
 //! plain struct ([`SaveLensApp`]) that tests drive headlessly through
@@ -13,6 +14,7 @@
 pub mod app;
 pub mod graph;
 pub mod jobs;
+pub mod questions;
 pub mod scanner;
 pub mod theme;
 pub mod toast;

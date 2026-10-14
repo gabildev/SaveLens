@@ -497,6 +497,10 @@ pub fn run(cli: Cli) -> Result<()> {
             println!("{} `{}` → {} in {}", green("✔"), e.alias, e.location, e.rel_path);
             Ok(())
         }
+        Command::What { action } => {
+            let engine = open_engine(&cli)?;
+            crate::what::run(&engine, action.as_ref(), json, |q| game(&engine, q).map(|g| g.id))
+        }
         Command::Cheats { game: q } => {
             let engine = open_engine(&cli)?;
             let g = game(&engine, q)?;
@@ -880,6 +884,18 @@ fn print_event(ev: &DaemonEvent) {
         DaemonEvent::Rollback { game, files } => format!("{} {game} {}", yellow("rollback"), files.join(", ")),
         DaemonEvent::TrainerToggled { game, enabled } => {
             format!("{} {game} {}", magenta("trainer"), if *enabled { "ON" } else { "off" })
+        }
+        DaemonEvent::Questions { game, rel_path, questions, .. } => {
+            let mut s = format!("{} {} {rel_path}", yellow("what?"), bold(game));
+            for q in questions {
+                s.push_str(&format!(
+                    "\n  #{} {}  {}",
+                    q.id,
+                    q.describe(),
+                    dim(&format!("savelens what answer {} <category>", q.id))
+                ));
+            }
+            s
         }
         DaemonEvent::OverlayToggleRequested => dim("overlay toggle requested"),
         DaemonEvent::Warning { message } => yellow(&format!("! {message}")),

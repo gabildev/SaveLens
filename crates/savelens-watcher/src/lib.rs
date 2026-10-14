@@ -7,14 +7,18 @@
 //! * [`daemon`] — background watcher with debounce, close-write detection,
 //!   lock check, auto-commit and freeze-on-save injection.
 //! * [`hotkeys`] — global hotkeys (`Ctrl+Shift+F5/F9/F12`, …).
+//! * [`watch`] — "what is this variable?" questions raised when a game
+//!   save changes a value, with noise filtering and answers that pin the
+//!   variable into the cheat table.
 
 pub mod config;
 pub mod daemon;
 pub mod engine;
 pub mod error;
 pub mod hotkeys;
+pub mod watch;
 
-pub use config::{HotkeyConfig, SaveLensConfig};
+pub use config::{HotkeyConfig, SaveLensConfig, WatchConfig};
 pub use daemon::{Daemon, DaemonEvent, DaemonHandle, DaemonOptions};
 pub use engine::{
     is_payload_raw, CheatValue, CheckoutReport, EditReport, EditTarget, Engine, FileDiff, FileStatus, TrackedFile,
@@ -22,3 +26,4 @@ pub use engine::{
 };
 pub use error::{EngineError, EngineResult};
 pub use hotkeys::{HotkeyAction, HotkeyService};
+pub use watch::{IgnoreScope, SaveOutcome};

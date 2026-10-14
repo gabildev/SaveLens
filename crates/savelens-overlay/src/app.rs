@@ -5,7 +5,9 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use egui::{Align, Color32, Layout, RichText, Sense, Stroke, StrokeKind, Ui, ViewportCommand};
-use savelens_watcher::Engine;
+use savelens_cas::WatchQuestion;
+use savelens_core::{CategoryGroup, VariableCategory};
+use savelens_watcher::{Engine, IgnoreScope};
 
 use crate::controller::{CheatRow, DaemonMode, NoticeLevel, OverlayCommand, OverlayController, Trend, LATENCY_WARN_MS};
 use crate::theme;
@@ -20,6 +22,9 @@ pub struct OverlayApp {
     preset_name: String,
     selected_preset: String,
     styled: bool,
+    /// Custom alias typed for the current question.
+    question_alias: String,
+    question_id: Option<i64>,
 }
 
 impl std::fmt::Debug for OverlayApp {
@@ -52,6 +57,8 @@ impl OverlayApp {
             preset_name: String::new(),
             selected_preset: String::new(),
             styled: false,
+            question_alias: String::new(),
+            question_id: None,
         }
     }
 
@@ -108,6 +115,7 @@ impl OverlayApp {
         }
         self.trainer_bar(ui);
         ui.add_space(4.0);
+        self.question_card(ui);
         self.cheat_table(ui);
         ui.add_space(4.0);
         if !self.controller.rows().is_empty() {
@@ -151,6 +159,21 @@ impl OverlayApp {
                     }
                     if ui.small_button("—").on_hover_text("Minimize").clicked() {
                         ctx.send_viewport_cmd(ViewportCommand::Minimized(true));
+                    }
+                    let pending = self.controller.questions().len();
+                    let quiet = self.controller.quiet();
+                    let bell = match (quiet, pending) {
+                        (true, 0) => RichText::new("🔕").color(theme::DIM),
+                        (true, n) => RichText::new(format!("🔕{n}")).color(theme::AMBER),
+                        (false, _) => RichText::new("🔔").color(theme::DIM),
+                    };
+                    let tip = if quiet {
+                        "Quiet mode: changes are still collected, the question card is hidden. Click to show it."
+                    } else {
+                        "Hide \"what is this variable?\" questions (they keep being collected)"
+                    };
+                    if ui.small_button(bell).on_hover_text(tip).clicked() {
+                        self.controller.set_quiet(!quiet);
                     }
                     let (color, tip) = match self.controller.daemon_mode() {
                         DaemonMode::Embedded => (theme::GREEN, "embedded daemon running".to_string()),
@@ -209,6 +232,120 @@ impl OverlayApp {
                 });
             });
         });
+    }
+
+    /// Non-modal "what is this variable?" card: the game is never paused or
+    /// focused away, keys only work while the overlay window has focus.
+    fn question_card(&mut self, ui: &mut Ui) {
+        if self.controller.quiet() {
+            return;
+        }
+        let Some(q) = self.controller.questions().first().cloned() else {
+            self.question_id = None;
+            return;
+        };
+        let total = self.controller.questions().len();
+        if self.question_id != Some(q.id) {
+            self.question_id = Some(q.id);
+            self.question_alias.clear();
+        }
+        let opacity = self.opacity;
+        let mut action: Option<QuestionAction> = None;
+        theme::card_frame(opacity).stroke(Stroke::new(1.0_f32, theme::AMBER.gamma_multiply(0.8))).show(ui, |ui| {
+            ui.horizontal(|ui| {
+                ui.label(RichText::new("❓ WHAT CHANGED?").small().strong().color(theme::AMBER));
+                ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                    if total > 1 {
+                        ui.label(RichText::new(format!("1 / {total}")).small().color(theme::DIM));
+                    }
+                });
+            });
+            let c = q.candidate();
+            ui.label(RichText::new(c.label()).monospace().strong().color(theme::TEXT))
+                .on_hover_text(format!("{} · seen in {} save(s)", q.rel_path, q.times_seen));
+            ui.label(RichText::new(c.change_text()).monospace().color(theme::CYAN));
+            if let Some(g) = &q.guess {
+                ui.label(
+                    RichText::new(format!("looks like {} (\"{}\") — Enter to confirm", g.category, g.keyword))
+                        .small()
+                        .color(theme::GREEN),
+                );
+            }
+            ui.horizontal_wrapped(|ui| {
+                for (n, cat) in c.quick_choices().into_iter().enumerate() {
+                    let suggested = q.guess.as_ref().is_some_and(|g| g.category == cat);
+                    let accent = if suggested { theme::GREEN } else { theme::CYAN };
+                    let text = format!("{} {}", n + 1, cat.label());
+                    if ui.add(neon_button(&text, accent)).on_hover_text(format!("It is {cat}: pin it")).clicked() {
+                        action = Some(QuestionAction::Answer(cat));
+                    }
+                }
+                ui.menu_button(RichText::new("More ⏷").color(theme::CYAN), |ui| {
+                    for group in CategoryGroup::ALL {
+                        ui.menu_button(group.label(), |ui| {
+                            for cat in group.categories() {
+                                if ui.button(cat.label()).clicked() {
+                                    action = Some(QuestionAction::Answer(cat));
+                                    ui.close_menu();
+                                }
+                            }
+                        });
+                    }
+                });
+            });
+            ui.horizontal(|ui| {
+                ui.add(
+                    egui::TextEdit::singleline(&mut self.question_alias)
+                        .id(ui.make_persistent_id("question-alias"))
+                        .desired_width(110.0)
+                        .hint_text("name it (optional)"),
+                );
+                if ui.small_button("Later").on_hover_text("Ask me again later (L)").clicked() {
+                    action = Some(QuestionAction::Later);
+                }
+                ui.menu_button(RichText::new("Not interesting ⏷").small(), |ui| {
+                    if ui.button("Only this value (I)").clicked() {
+                        action = Some(QuestionAction::Ignore(IgnoreScope::This));
+                        ui.close_menu();
+                    }
+                    if ui.button("Everything like it in this file").clicked() {
+                        action = Some(QuestionAction::Ignore(IgnoreScope::Similar));
+                        ui.close_menu();
+                    }
+                    if ui.button("Everything like it in this game").clicked() {
+                        action = Some(QuestionAction::Ignore(IgnoreScope::Game));
+                        ui.close_menu();
+                    }
+                });
+            });
+        });
+        ui.add_space(4.0);
+        if action.is_none() {
+            action = keyboard_answer(ui, &q);
+        }
+        if let Some(a) = action {
+            self.run_question_action(q.id, a);
+        }
+    }
+
+    fn run_question_action(&mut self, id: i64, action: QuestionAction) {
+        match action {
+            QuestionAction::Answer(cat) => {
+                let alias = self.question_alias.trim().to_string();
+                let alias = (!alias.is_empty()).then_some(alias);
+                let r = self.controller.answer_question(id, cat, alias.as_deref());
+                report(&mut self.controller, "answer", r);
+            }
+            QuestionAction::Ignore(scope) => {
+                let r = self.controller.ignore_question(id, scope);
+                report(&mut self.controller, "ignore", r);
+            }
+            QuestionAction::Later => {
+                let r = self.controller.snooze_question(id);
+                report(&mut self.controller, "later", r);
+            }
+        }
+        self.question_alias.clear();
     }
 
     fn cheat_table(&mut self, ui: &mut Ui) {
@@ -420,6 +557,52 @@ impl eframe::App for OverlayApp {
     fn clear_color(&self, _visuals: &egui::Visuals) -> [f32; 4] {
         [0.0, 0.0, 0.0, 0.0]
     }
+}
+
+/// What the player chose for a question.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum QuestionAction {
+    Answer(VariableCategory),
+    Ignore(IgnoreScope),
+    Later,
+}
+
+/// Keys of the question card (only while no text field has focus):
+/// `1`–`9` the quick choices shown on the card, `Enter` the suggested
+/// category, `I` ignore, `L` later.
+fn keyboard_answer(ui: &Ui, q: &WatchQuestion) -> Option<QuestionAction> {
+    if ui.ctx().memory(|m| m.focused().is_some()) {
+        return None;
+    }
+    ui.input(|i| {
+        let digits = [
+            egui::Key::Num1,
+            egui::Key::Num2,
+            egui::Key::Num3,
+            egui::Key::Num4,
+            egui::Key::Num5,
+            egui::Key::Num6,
+            egui::Key::Num7,
+            egui::Key::Num8,
+            egui::Key::Num9,
+        ];
+        let choices = q.candidate().quick_choices();
+        for (key, cat) in digits.iter().zip(choices) {
+            if i.key_pressed(*key) {
+                return Some(QuestionAction::Answer(cat));
+            }
+        }
+        if i.key_pressed(egui::Key::Enter) {
+            return q.guess.as_ref().map(|g| QuestionAction::Answer(g.category));
+        }
+        if i.key_pressed(egui::Key::I) {
+            return Some(QuestionAction::Ignore(IgnoreScope::This));
+        }
+        if i.key_pressed(egui::Key::L) {
+            return Some(QuestionAction::Later);
+        }
+        None
+    })
 }
 
 fn empty_state(ui: &mut Ui, title: &str, hint: &str) {

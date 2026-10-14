@@ -15,8 +15,10 @@ pub mod error;
 pub mod model;
 pub mod safety;
 pub mod store;
+pub mod watch;
 
 pub use error::{CasError, CasResult};
 pub use model::*;
 pub use safety::{MutationSummary, PanicReport, PanicScope, WriteMethod};
 pub use store::{default_data_dir, Store};
+pub use watch::{AskOutcome, QuestionStatus, WatchMute, WatchQuestion};

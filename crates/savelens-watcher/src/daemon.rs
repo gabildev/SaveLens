@@ -4,8 +4,9 @@
 //! * Debounces events per file; an `IN_CLOSE_WRITE` shortens the quiet period.
 //! * Before reading: size/mtime stability check and write-lock check (no
 //!   process may hold the file open for writing).
-//! * Auto-commits with a semantic changelog, then (if enabled) runs the disk
-//!   trainer: frozen values are injected atomically and re-signed.
+//! * Auto-commits with a semantic changelog, screens it for "what is this
+//!   variable?" questions (noise filtered, never blocking), then (if enabled)
+//!   runs the disk trainer: frozen values are injected atomically and re-signed.
 //! * Serves requests queued in the store by other processes (overlay, CLI)
 //!   and global hotkeys (snapshot, rollback, panic restore, trainer toggle).
 
@@ -27,20 +28,68 @@ use crate::hotkeys::{HotkeyAction, HotkeyService};
 /// Events emitted by the daemon (for UIs and the CLI).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum DaemonEvent {
-    Started { games: usize, hotkeys: Vec<String> },
-    Watching { game: String, root: PathBuf },
-    Unwatched { game: String },
-    Committed { game_id: GameId, game: String, rel_path: String, commit: i64, summary: String },
-    Unchanged { game: String, rel_path: String },
-    TrainerApplied { game: String, rel_path: String, applied: Vec<String>, elapsed_ms: f64 },
-    Locked { path: PathBuf },
-    PanicRestored { path: PathBuf, tag: String },
-    Snapshot { game: String, commit: Option<i64> },
-    Rollback { game: String, files: Vec<String> },
-    TrainerToggled { game: String, enabled: bool },
+    Started {
+        games: usize,
+        hotkeys: Vec<String>,
+    },
+    Watching {
+        game: String,
+        root: PathBuf,
+    },
+    Unwatched {
+        game: String,
+    },
+    Committed {
+        game_id: GameId,
+        game: String,
+        rel_path: String,
+        commit: i64,
+        summary: String,
+    },
+    Unchanged {
+        game: String,
+        rel_path: String,
+    },
+    TrainerApplied {
+        game: String,
+        rel_path: String,
+        applied: Vec<String>,
+        elapsed_ms: f64,
+    },
+    /// A save changed values that look like player stats: "what is this?".
+    /// Non-blocking: the questions wait in the store until answered.
+    Questions {
+        game_id: GameId,
+        game: String,
+        rel_path: String,
+        questions: Vec<savelens_cas::WatchQuestion>,
+    },
+    Locked {
+        path: PathBuf,
+    },
+    PanicRestored {
+        path: PathBuf,
+        tag: String,
+    },
+    Snapshot {
+        game: String,
+        commit: Option<i64>,
+    },
+    Rollback {
+        game: String,
+        files: Vec<String>,
+    },
+    TrainerToggled {
+        game: String,
+        enabled: bool,
+    },
     OverlayToggleRequested,
-    Warning { message: String },
-    Error { message: String },
+    Warning {
+        message: String,
+    },
+    Error {
+        message: String,
+    },
     Stopped,
 }
 
@@ -351,17 +400,27 @@ impl Daemon {
             }
         };
         if cfg.auto_commit {
-            match self.engine.commit_file(game.id, &p.rel, bytes, CommitKind::Auto, "game saved") {
-                Ok(Some(c)) => {
-                    let _ = events.send(DaemonEvent::Committed {
-                        game_id: game.id,
-                        game: game.name.clone(),
-                        rel_path: p.rel.clone(),
-                        commit: c.id,
-                        summary: c.summary.clone(),
-                    });
+            match self.engine.commit_game_save(game.id, &p.rel, bytes) {
+                Ok(crate::watch::SaveOutcome { commit: Some(c), questions }) => {
+                    {
+                        let _ = events.send(DaemonEvent::Committed {
+                            game_id: game.id,
+                            game: game.name.clone(),
+                            rel_path: p.rel.clone(),
+                            commit: c.id,
+                            summary: c.summary.clone(),
+                        });
+                    }
+                    if !questions.is_empty() {
+                        let _ = events.send(DaemonEvent::Questions {
+                            game_id: game.id,
+                            game: game.name.clone(),
+                            rel_path: p.rel.clone(),
+                            questions,
+                        });
+                    }
                 }
-                Ok(None) => {
+                Ok(_) => {
                     let _ = events.send(DaemonEvent::Unchanged { game: game.name.clone(), rel_path: p.rel.clone() });
                 }
                 Err(e) => {

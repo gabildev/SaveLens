@@ -48,6 +48,7 @@ any sub-tree of an old save (`Player.Inventory`) into your current progress.
 - [Tested on real games](#tested-on-real-games)
 - [CLI reference](#cli-reference)
 - [TUI, GUI and overlay](#tui-gui-and-overlay)
+- ["What changed?"](#what-changed--the-trainer-asks-what-a-value-is)
 - [Encryption profiles (`game_keys.toml`)](#encryption-profiles-game_keystoml)
 - [Configuration](#configuration)
 - [Architecture](#architecture)
@@ -230,13 +231,14 @@ file on disk. Scanner filters: `1500`, `=1500`, `1500->1300`, `+300`, `-=300`, `
 ## TUI, GUI and overlay
 
 - **TUI** (`savelens tui`, Vim keys, `?` for help): *Games & Watcher*, *Timeline & Branches*,
-  *Scanner (Cheat Engine mode)*, *AST Explorer & Cherry-Pick*. `P` = Panic Restore.
+  *Scanner (Cheat Engine mode)*, *AST Explorer & Cherry-Pick*. `P` = Panic Restore, `A` = answer "what changed?".
 - **GUI** (`savelens gui`): dark neon theme, sidebar with discovered games and **Auto-Hunt Active Game**,
   commit graph with semantic cards, **Scanner Studio** with the **Cheat Table / Pinned Stats** panel and
   **Apply & Sign Save**, side-by-side **Visual Tree Diff** with *Cherry-Pick this section*, integrity bar and a
   red **Panic Restore Original** button.
 - **Overlay** (`savelens overlay`): translucent, borderless, always-on-top mod menu for borderless-fullscreen
-  games — live pinned stats, freeze toggles, trainer master switch, presets, injection latency.
+  games — live pinned stats, freeze toggles, trainer master switch, presets, injection latency and the
+  non-modal "What changed?" card.
 
 Default global hotkeys (configurable in `config.toml`):
 
@@ -247,6 +249,68 @@ Default global hotkeys (configurable in `config.toml`):
 | `Ctrl+Shift+F10` | Toggle disk trainer |
 | `Ctrl+Shift+F11` | Show / hide overlay |
 | `Ctrl+Shift+F12` | **Panic Restore** |
+
+## "What changed?" — the trainer asks what a value is
+
+When a game saves, SaveLens screens the semantic diff and asks about the few values that look like player
+stats — *"`player.gold`: 100 -> 80 (-20). What is it?"* — so you build the cheat table by just playing.
+Answer with one key and the value is pinned (ready to freeze); say *not interesting* and it is muted for good.
+
+It is built not to nag:
+
+- **Only the game's own saves** raise questions. Checkouts, rollbacks, cherry-picks, edits and the trainer's own
+  freeze-on-save writes never do, and pinned values are never asked again.
+- **Noise is filtered before you see it**: clocks and play time, timestamps (by name *and* by value), positions,
+  rotations, cameras, ids/GUIDs/seeds/versions/checksums, save/load counters, weather/UI on-off switches,
+  world lists (six enemies losing hp in one save is world state), raw blobs with many changed words.
+- **It learns**: a value that changed on every one of the last saves in the same direction (a step counter, a
+  hidden clock) becomes *volatile* and is muted automatically.
+- **Bounded**: at most 3 questions per save and 8 waiting per game; the rest is dropped silently.
+- **Never modal**: questions wait in the store. The overlay shows a small card (keys only while the overlay has
+  focus: `1`–`9` quick answer, `Enter` the suggestion, `I` ignore, `L` later; 🔔/🔕 quiet mode), the GUI a
+  collapsible window bottom-right, the TUI a `❓N (A)` badge, the CLI `savelens what`.
+
+It covers any genre — 30 categories in 6 groups, each with name hints in English and Spanish:
+
+| Group | Categories |
+|---|---|
+| Resources | Money · Gems/premium · Materials (wood, ore, scrap…) · Food/supplies · Fuel/battery |
+| Vitals | Health · Max health · Armor/shield · Mana/energy · Stamina · Lives/continues · Hunger/thirst/needs |
+| Progression | XP · Level · Skill/perk points · Attribute (STR/DEX/…) · Reputation/relationship · Quest/story progress · Unlock/flag |
+| Inventory | Ammo · Item count · Keys/lockpicks · Durability |
+| Combat & score | Damage/attack · Speed stat · Score/points · Kills/wins/deaths |
+| World & other | Population/units · Day/time limit · Other (name it yourself) |
+
+Booleans are asked about only when their name says progress (`hasDoubleJump`, `bossDefeated`,
+`mapUnlocked`) and can be pinned and frozen as 0/1. "Not interesting" can mute only that value, every element
+of the same lists in the file (`enemies[*].hp`), or in the whole game; `savelens what mute <game> 'world.*'`
+mutes by pattern.
+
+```bash
+savelens what                       # pending questions
+savelens what answer 12 money       # or: health, hunger, ammo, xp, unlock, … (see `savelens what categories`)
+savelens what answer 13 other --alias "Corruption"
+savelens what ignore 14 --scope similar
+savelens what later 15 --minutes 60
+```
+
+Tuning lives in `config.toml`:
+
+```toml
+[watch]
+enabled = true
+max_pending_per_game = 8
+snooze_minutes = 30
+global_mutes = ["*.seed", "Settings.*"]
+
+[watch.screening]
+max_questions_per_save = 3
+bulk_threshold = 4       # more changed elements of one list = world state
+max_raw_words = 6        # raw blobs with more changed i32 words are ignored
+volatile_streak = 4      # saves in a row (same direction) before auto-mute
+raw_changes = true
+only_named_stats = false # true: only ask about values whose name looks like a stat
+```
 
 ## Encryption profiles (`game_keys.toml`)
 
@@ -263,7 +327,8 @@ Everything lives in `$SAVELENS_HOME` or the platform data directory
 
 ```text
 savelens/
-├── savelens.db        SQLite: games, commits, branches, tags, changelogs, cheat table, safety backups, events
+├── savelens.db        SQLite: games, commits, branches, tags, changelogs, cheat table, safety backups, events,
+│                      "what changed?" questions, mutes and per-variable change history
 ├── chunks/ab/…zst     FastCDC chunks, zstd-compressed, blake3-addressed
 ├── staging/           atomic-write staging area (always empty at rest)
 └── config.toml        debounce, lock timeout, hotkeys, limits (`savelens config --init`)

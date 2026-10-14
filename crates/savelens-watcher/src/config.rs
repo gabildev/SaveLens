@@ -32,6 +32,36 @@ impl Default for HotkeyConfig {
     }
 }
 
+/// Change watch: asks "what is this variable?" when a game save changes a
+/// value, without nagging about clocks, positions or world state.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct WatchConfig {
+    /// Raise questions on automatic commits (game saves).
+    pub enabled: bool,
+    /// Never keep more than this many unanswered questions per game; new
+    /// changes are dropped silently while the queue is full.
+    pub max_pending_per_game: usize,
+    /// Default "ask me later" delay.
+    pub snooze_minutes: u64,
+    /// Patterns muted for every game (see `MutePattern`).
+    pub global_mutes: Vec<String>,
+    /// Screening knobs (questions per save, bulk / volatility thresholds).
+    pub screening: savelens_core::WatchOptions,
+}
+
+impl Default for WatchConfig {
+    fn default() -> Self {
+        WatchConfig {
+            enabled: true,
+            max_pending_per_game: 8,
+            snooze_minutes: 30,
+            global_mutes: Vec::new(),
+            screening: savelens_core::WatchOptions::default(),
+        }
+    }
+}
+
 /// Engine / daemon configuration.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
@@ -52,6 +82,7 @@ pub struct SaveLensConfig {
     /// Maximum lines of semantic changelog stored per file and commit.
     pub max_changelog_lines: usize,
     pub hotkeys: HotkeyConfig,
+    pub watch: WatchConfig,
 }
 
 impl Default for SaveLensConfig {
@@ -65,6 +96,7 @@ impl Default for SaveLensConfig {
             max_file_size_mb: 512,
             max_changelog_lines: 200,
             hotkeys: HotkeyConfig::default(),
+            watch: WatchConfig::default(),
         }
     }
 }
@@ -120,6 +152,16 @@ mod tests {
         assert_eq!(c.debounce_ms, 42);
         assert!(!c.hotkeys.enabled);
         assert_eq!(c.hotkeys.quick_snapshot, "ctrl+shift+F5");
+        assert_eq!(c.watch, WatchConfig::default());
+        std::fs::write(
+            dir.path().join("config.toml"),
+            "[watch]\nmax_pending_per_game = 2\nglobal_mutes = [\"*.seed\"]\n[watch.screening]\nvolatile_streak = 6\n",
+        )
+        .unwrap();
+        let c = SaveLensConfig::load(dir.path()).unwrap();
+        assert_eq!((c.watch.max_pending_per_game, c.watch.screening.volatile_streak), (2, 6));
+        assert_eq!(c.watch.screening.max_questions_per_save, 3);
+        assert_eq!(c.watch.global_mutes, ["*.seed"]);
         std::fs::write(dir.path().join("config.toml"), "debounce_ms = \"x\"").unwrap();
         assert!(SaveLensConfig::load(dir.path()).is_err());
     }

@@ -18,6 +18,7 @@ pub mod node;
 pub mod path;
 pub mod raw;
 pub mod scanner;
+pub mod watch;
 
 pub use cherry::{cherry_pick, CherryPickMode, CherryPickOptions, CherryPickReport};
 pub use diff::{diff, diff_with, AliasResolver, Change, ChangeKind, DiffOptions, NoAliases, SemanticDiff};
@@ -31,3 +32,7 @@ pub use node::{Node, NodeKind, NodeMap, ScalarValue};
 pub use path::{NodePath, PathSeg};
 pub use raw::{Endianness, RawRegion, ScanType};
 pub use scanner::{Alignment, CandidateView, Location, PinnedVariable, ScanConfig, ScanFilter, ScanSession};
+pub use watch::{
+    CategoryGroup, CategoryGuess, MutePattern, NoiseReason, NumericChange, Screening, VariableCategory, Volatility,
+    WatchCandidate, WatchOptions, WatchState,
+};

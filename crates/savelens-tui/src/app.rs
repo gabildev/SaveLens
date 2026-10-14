@@ -14,7 +14,7 @@ use ratatui::widgets::{Block, Clear, List, ListItem, ListState, Paragraph, Wrap}
 use ratatui::Frame;
 use savelens_cas::{
     BranchRecord, Changelog, CommitId, CommitKind, CommitRecord, DaemonStatus, EventRecord, GameId, GameRecord,
-    PanicScope, StoreStats, TagRecord,
+    PanicScope, StoreStats, TagRecord, WatchQuestion,
 };
 use savelens_core::{Alignment as ScanAlign, Endianness, Location, NodePath, ScanConfig, ScanSession, ScanType};
 use savelens_discovery::{DiscoveredGame, DiscoveryConfig};
@@ -175,6 +175,7 @@ pub(crate) enum InputPurpose {
     ScanFilter,
     AstSearch,
     AstEdit { path: NodePath },
+    QuestionAlias { id: i64, category: savelens_core::VariableCategory },
 }
 
 /// A text prompt.
@@ -212,7 +213,17 @@ pub(crate) enum PickPurpose {
     File,
     ScanSource,
     AstRev,
-    TrackLocation { game: Box<DiscoveredGame> },
+    TrackLocation {
+        game: Box<DiscoveredGame>,
+    },
+    /// Answer / ignore / snooze a "what is this variable?" question.
+    Question {
+        id: i64,
+    },
+    /// Full category list of a question.
+    QuestionCategory {
+        id: i64,
+    },
 }
 
 /// One entry of a picker.
@@ -280,6 +291,8 @@ pub struct App {
     pub(crate) scanner_page: usize,
     pub(crate) ast_offset: usize,
     pub(crate) frame: u64,
+    /// Pending "what is this variable?" questions of the selected game.
+    pub(crate) questions: Vec<WatchQuestion>,
     last_refresh: Instant,
     quit: bool,
 }
@@ -316,6 +329,7 @@ impl App {
             scanner_page: 10,
             ast_offset: 0,
             frame: 0,
+            questions: Vec::new(),
             last_refresh: Instant::now(),
             quit: false,
         };
@@ -447,6 +461,7 @@ impl App {
             self.files.clear();
             self.file = None;
             self.scanner.cheats.clear();
+            self.questions.clear();
             return Ok(());
         };
         let store = self.engine.store();
@@ -468,6 +483,7 @@ impl App {
             self.set_file(self.files.first().map(|f| f.rel_path.clone()));
         }
         self.refresh_cheats();
+        self.questions = self.engine.questions(Some(game.id), false)?;
         Ok(())
     }
 
@@ -607,6 +623,11 @@ impl App {
                 true
             }
             DaemonEvent::Unchanged { .. } => false,
+            DaemonEvent::Questions { game, questions, .. } => {
+                let what: Vec<String> = questions.iter().map(|q| q.describe()).collect();
+                self.toast(Level::Info, format!("❓ {game}: what is {}? (A to answer)", what.join(", ")));
+                true
+            }
             DaemonEvent::TrainerApplied { game, rel_path, applied, elapsed_ms } => {
                 self.toast(
                     Level::Success,
@@ -764,6 +785,7 @@ impl App {
             KeyCode::Char('q') => self.request_quit(),
             KeyCode::Char('P') => self.panic_prompt()?,
             KeyCode::Char('w') => self.toggle_daemon()?,
+            KeyCode::Char('A') => self.open_question()?,
             KeyCode::Char(c @ '1'..='4') => {
                 let idx = (c as usize) - ('1' as usize);
                 self.switch_tab(Tab::ALL[idx]);
@@ -878,6 +900,7 @@ impl App {
                 Ok(())
             }
             InputPurpose::AstEdit { path } => self.ast_edit(path, &value),
+            InputPurpose::QuestionAlias { id, category } => self.question_answer(id, category, &value),
         }
     }
 
@@ -918,6 +941,13 @@ impl App {
             KeyCode::PageDown => p.sel = widgets::step(p.sel, p.items.len(), 10),
             KeyCode::PageUp => p.sel = widgets::step(p.sel, p.items.len(), -10),
             KeyCode::Esc | KeyCode::Char('q') => return Ok(()),
+            // Question pickers: digits answer directly.
+            KeyCode::Char(c @ '1'..='9') if matches!(p.purpose, PickPurpose::Question { .. }) => {
+                let idx = (c as usize) - ('1' as usize);
+                if let Some(item) = p.items.get(idx).cloned() {
+                    return self.picked(p.purpose, item);
+                }
+            }
             KeyCode::Enter => {
                 let Some(item) = p.items.get(p.sel).cloned() else {
                     return Ok(());
@@ -952,6 +982,9 @@ impl App {
             PickPurpose::TrackLocation { game } => {
                 let idx: usize = item.value.parse().context("invalid location index")?;
                 self.track_discovered(&game, idx)
+            }
+            PickPurpose::Question { id } | PickPurpose::QuestionCategory { id } => {
+                self.question_picked(id, &item.value)
             }
         }
     }
@@ -1159,6 +1192,9 @@ impl App {
             right.push(Span::styled(format!(" ⎇ {}", g.current_branch), Style::default().fg(theme::ACCENT2)));
             right.push(Span::raw("  "));
         }
+        if !self.questions.is_empty() {
+            right.push(Span::styled(format!("❓{} (A) ", self.questions.len()), Style::default().fg(theme::YELLOW)));
+        }
         if self.daemon.is_some() {
             right.push(Span::styled("● watching", Style::default().fg(theme::GREEN)));
         } else if self.daemon_status.is_some() {
@@ -1169,7 +1205,7 @@ impl App {
         right.push(Span::raw(" "));
         f.render_widget(
             Paragraph::new(Line::from(right)).alignment(Alignment::Right).style(Style::default().bg(theme::BG)),
-            right_part(area, 48),
+            right_part(area, 58),
         );
     }
 
@@ -1227,6 +1263,9 @@ impl App {
                     ],
                 };
                 h.insert(0, ("?", "help"));
+                if !self.questions.is_empty() {
+                    h.push(("A", "what changed?"));
+                }
                 h.extend([("w", "watch"), ("P", "panic"), (":", "cmd"), ("q", "quit")]);
                 h
             }
@@ -1381,6 +1420,7 @@ fn draw_help(f: &mut Frame, area: Rect, scroll: u16) {
         section("Global"),
         row("1-4 / Tab / S-Tab", "switch tab"),
         row("w", "start / stop the embedded watcher daemon (global hotkeys enabled)"),
+        row("A", "\"what changed?\": name a value the game just changed (1-9 quick answer, ignore, later)"),
         row("P", "PANIC RESTORE: revert the last SaveLens mutation bit for bit"),
         row(":", "command line: track, snapshot, branch, checkout, tag, gc, discover, watch"),
         row("?", "this help"),

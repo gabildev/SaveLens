@@ -365,7 +365,13 @@ impl Engine {
         (Some(d), summary, lines)
     }
 
-    fn changelog(&self, game: &GameRecord, rel: &str, old: Option<&[u8]>, new: &[u8]) -> Changelog {
+    fn changelog(
+        &self,
+        game: &GameRecord,
+        rel: &str,
+        old: Option<&[u8]>,
+        new: &[u8],
+    ) -> (Changelog, Option<SemanticDiff>) {
         match old {
             None => {
                 let codec = self
@@ -373,15 +379,16 @@ impl Engine {
                     .open(new, &self.ctx_for(game, rel))
                     .map(|o| o.codec_id().to_string())
                     .unwrap_or_else(|_| "raw".into());
-                Changelog {
+                let log = Changelog {
                     rel_path: rel.to_string(),
                     summary: format!("new file ({codec}, {} bytes)", new.len()),
                     lines: Vec::new(),
-                }
+                };
+                (log, None)
             }
             Some(old) => {
-                let (_, summary, lines) = self.semantic_diff(game, rel, old, new);
-                Changelog { rel_path: rel.to_string(), summary, lines }
+                let (d, summary, lines) = self.semantic_diff(game, rel, old, new);
+                (Changelog { rel_path: rel.to_string(), summary, lines }, d)
             }
         }
     }
@@ -404,21 +411,37 @@ impl Engine {
         kind: CommitKind,
         message: &str,
     ) -> EngineResult<Option<CommitRecord>> {
+        Ok(self.commit_changes_watched(game, changes, kind, message)?.commit)
+    }
+
+    /// Commits changes and, for automatic commits (the game saved), screens
+    /// the semantic diffs for "what is this variable?" questions.
+    pub(crate) fn commit_changes_watched(
+        &self,
+        game: &GameRecord,
+        changes: Vec<(String, Vec<u8>, Option<i64>)>,
+        kind: CommitKind,
+        message: &str,
+    ) -> EngineResult<crate::watch::SaveOutcome> {
         let mut file_changes = Vec::new();
         let mut logs = Vec::new();
         let mut summaries = Vec::new();
+        let mut diffs = Vec::new();
         for (rel, bytes, mtime) in changes {
             let old = self.head_bytes(game, &rel)?;
             if old.as_deref() == Some(bytes.as_slice()) {
                 continue;
             }
-            let log = self.changelog(game, &rel, old.as_deref(), &bytes);
+            let (log, d) = self.changelog(game, &rel, old.as_deref(), &bytes);
+            if let Some(d) = d {
+                diffs.push((rel.clone(), d));
+            }
             summaries.push(if log.summary.is_empty() { rel.clone() } else { log.summary.clone() });
             logs.push(log);
             file_changes.push(FileChange { rel_path: rel, content: Some(bytes), mtime });
         }
         if file_changes.is_empty() {
-            return Ok(None);
+            return Ok(crate::watch::SaveOutcome::default());
         }
         let summary = summaries.join("; ");
         let commit =
@@ -426,7 +449,13 @@ impl Engine {
         if let Some(c) = &commit {
             self.store.log_event(Some(game.id), "commit", &format!("#{} [{}] {}: {}", c.id, kind, message, summary))?;
         }
-        Ok(commit)
+        let mut questions = Vec::new();
+        if kind == CommitKind::Auto && self.config.watch.enabled {
+            for (rel, d) in &diffs {
+                questions.extend(self.watch_diff(game, rel, d, commit.as_ref().map(|c| c.id))?);
+            }
+        }
+        Ok(crate::watch::SaveOutcome { commit, questions })
     }
 
     /// Snapshots every tracked file of a game.
@@ -440,7 +469,20 @@ impl Engine {
         self.commit_changes(&game, changes, kind, message)
     }
 
-    /// Commits one file's bytes (used by the watcher).
+    /// Commits one file written by the game and screens it for questions
+    /// (used by the watcher daemon).
+    pub fn commit_game_save(
+        &self,
+        game_id: GameId,
+        rel: &str,
+        bytes: Vec<u8>,
+    ) -> EngineResult<crate::watch::SaveOutcome> {
+        let game = self.store.game(game_id)?;
+        let rel = savelens_cas::normalize_rel_path(rel)?;
+        self.commit_changes_watched(&game, vec![(rel, bytes, None)], CommitKind::Auto, "game saved")
+    }
+
+    /// Commits one file's bytes.
     pub fn commit_file(
         &self,
         game_id: GameId,

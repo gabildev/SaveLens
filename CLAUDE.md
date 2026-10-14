@@ -50,7 +50,7 @@ This file is the contract for anyone (human or agent) working on the code base.
 | `savelens-codecs` | Reversible `EnvelopePipeline`: crypto (AES-CBC/ECB/CTR, XOR, ES3 PBKDF2+AES, `game_keys.toml`, entropy) → checksum hunter → compression (zlib/gzip/deflate/LZ4/zstd/base64, LZString, Palworld PlZ) → structural codecs (JSON + nested JSON, UE GVAS, .NET NRBF, Unity PlayerPrefs, SQLite, NBT, MessagePack, INI/CFG, KSP ConfigNode, XML, XML plist, BND4, Anvil, ZIP, Python pickle, raw binary). Containers open their entries through the full pipeline (`codecs/container.rs`). |
 | `savelens-cas` | Content-addressable store: FastCDC chunking + zstd chunk files + SQLite metadata (games, branches, commits, tags, changelogs, cheat table, safety backups). Mutation protocol + panic restore. |
 | `savelens-discovery` | Steam library/AppManifest parsing (native, Flatpak, Snap, Windows), Proton prefix mapping, embedded save-path rules, engine heuristics (Unity `app.info`, Unreal, Godot, …), live process file hunter. |
-| `savelens-watcher` | `Engine` facade used by every front-end, background daemon (debounce, lock check, auto-commit, freeze-on-save trainer), atomic hot-swap, global hotkeys. |
+| `savelens-watcher` | `Engine` facade used by every front-end, background daemon (debounce, lock check, auto-commit, freeze-on-save trainer), atomic hot-swap, global hotkeys, "what changed?" questions (`watch.rs`). |
 | `savelens-tui` | `ratatui` + `crossterm` terminal UI (Games, Timeline, Scanner, AST explorer / cherry-pick). |
 | `savelens-gui` | `eframe`/`egui` desktop app (sidebar, commit graph, Scanner Studio, tree diff & cherry-picker, integrity bar, panic button). |
 | `savelens-overlay` | Translucent always-on-top mod menu: live cheat table, freeze-on-save rules, hotkeys. |
@@ -70,6 +70,10 @@ This file is the contract for anyone (human or agent) working on the code base.
 * **Paths** use the syntax `Player.Inventory[3].Name`; keys containing `.`, `[`, `]`, `"` or
   whitespace are quoted: `Root["key.with.dots"]`.
 * **SQLite is the IPC bus** between the daemon, the overlay and the UIs (WAL mode, busy timeout).
+* **"What changed?" questions** (`savelens-core::watch` screening, `savelens-cas::watch` storage,
+  `savelens-watcher::watch` engine API) are raised only by automatic commits (the game saved). They are
+  rows in the store, never modal; every front-end answers them through the `Engine`. New noise rules go
+  into `savelens-core/src/watch.rs` with a unit test.
 * The scanner works on named AST leaves, numeric strings and every `Bytes`/`RawRegion` node
   (aligned or unaligned, little/big endian).
 

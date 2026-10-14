@@ -517,3 +517,28 @@ fn simulated_clicks_switch_views_and_drive_the_panic_button() {
     assert_eq!(fs::read(fx.slot()).unwrap(), before);
     no_error_toasts(&app);
 }
+
+#[test]
+fn what_changed_window_pins_answers() {
+    let fx = fixture();
+    let mut app = app_for(&fx);
+    let ctx = egui::Context::default();
+    frame(&ctx, &mut app, Vec2::new(1280.0, 800.0));
+    let q = app
+        .questions()
+        .iter()
+        .find(|q| q.candidate().label() == "Player.Gold")
+        .cloned()
+        .expect("the game save raised a question about Player.Gold");
+    assert_eq!(q.guess.as_ref().map(|g| g.category), Some(savelens_core::VariableCategory::Money));
+    let msg = app
+        .answer(q.id, savelens_gui::questions::QuestionChoice::Answer(savelens_core::VariableCategory::Money), None)
+        .unwrap();
+    assert!(msg.contains("Money (gold)"), "{msg}");
+    assert!(app.wait_idle(WAIT));
+    frame(&ctx, &mut app, Vec2::new(1280.0, 800.0));
+    assert!(app.questions().iter().all(|p| p.id != q.id));
+    let cheats = fx.engine.cheat_values(fx.game).unwrap();
+    assert!(cheats.iter().any(|c| c.entry.alias == "Money (gold)" && c.current == Some(ScalarValue::Int(1500))));
+    no_error_toasts(&app);
+}

@@ -200,6 +200,13 @@ pub enum Command {
     Cheats { game: String },
     /// Set a pinned variable on disk ("Apply & Sign Save").
     Set { game: String, alias: String, value: String },
+    /// "What changed?": values a game save changed that look like player
+    /// stats (money, health, ammo, hunger, XP, quest flags, …). Answer them to
+    /// pin them, or mute what you do not care about.
+    What {
+        #[command(subcommand)]
+        action: Option<WhatCmd>,
+    },
     /// Freeze a pinned variable (applied after every save while the trainer is on).
     Freeze {
         game: String,
@@ -294,4 +301,66 @@ pub enum Command {
     Keys,
     /// List structural codecs.
     Codecs,
+}
+
+#[derive(Debug, Clone, Copy, ValueEnum, PartialEq, Eq)]
+pub enum ScopeArg {
+    /// Only this value.
+    This,
+    /// Every element of the same lists in this file (`enemies[*].hp`).
+    Similar,
+    /// Every element of the same lists in every file of the game.
+    Game,
+}
+
+#[derive(Debug, Subcommand)]
+pub enum WhatCmd {
+    /// List questions (pending ones by default).
+    List {
+        /// Only this game (id, app id or name).
+        game: Option<String>,
+        /// Include answered / ignored / snoozed questions.
+        #[arg(long)]
+        all: bool,
+    },
+    /// Answer a question: pins the value into the cheat table.
+    Answer {
+        id: i64,
+        /// What it is: money, gems, materials, food, fuel, health, max-health,
+        /// armor, mana, stamina, lives, hunger, xp, level, skill-points,
+        /// attribute, reputation, quest, unlock, ammo, items, keys,
+        /// durability, damage, speed, score, kills, population, time, other
+        /// (or its number in `savelens what categories`).
+        category: String,
+        /// Alias in the cheat table (default: from the category and the name).
+        #[arg(long)]
+        alias: Option<String>,
+    },
+    /// Not interesting: never ask about this value (or values like it) again.
+    Ignore {
+        id: i64,
+        #[arg(long, value_enum, default_value_t = ScopeArg::This)]
+        scope: ScopeArg,
+    },
+    /// Ask again later.
+    Later {
+        id: i64,
+        /// Minutes (default: `watch.snooze_minutes` of config.toml).
+        #[arg(long)]
+        minutes: Option<u64>,
+    },
+    /// Mute a path pattern (`*` wildcard, e.g. `world.*`, `*.timePlayed`).
+    Mute {
+        game: String,
+        pattern: String,
+        /// Only in this save file.
+        #[arg(long)]
+        file: Option<String>,
+    },
+    /// List the muted patterns of a game.
+    Mutes { game: String },
+    /// Remove a muted pattern.
+    Unmute { game: String, id: i64 },
+    /// List every category.
+    Categories,
 }

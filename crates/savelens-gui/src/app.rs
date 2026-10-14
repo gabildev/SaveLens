@@ -335,6 +335,7 @@ pub struct SaveLensApp {
     last_activity_poll: Option<Instant>,
     last_cheat_poll: Option<Instant>,
     activity_inflight: bool,
+    pub(crate) questions: crate::questions::QuestionsUi,
 }
 
 fn err_string(e: impl std::fmt::Display) -> String {
@@ -381,6 +382,7 @@ impl SaveLensApp {
             last_activity_poll: None,
             last_cheat_poll: None,
             activity_inflight: false,
+            questions: crate::questions::QuestionsUi::default(),
         };
         if let Some(first) = app.games.first().map(|g| g.id) {
             app.select_game(first);
@@ -402,6 +404,7 @@ impl SaveLensApp {
         self.poll();
         self.periodic();
         crate::views::draw(self, ctx);
+        crate::questions::draw(self, ctx);
         let intents = std::mem::take(&mut self.intents);
         for i in intents {
             self.handle_intent(i);
@@ -786,7 +789,7 @@ impl SaveLensApp {
         }
     }
 
-    fn apply_refresh(&mut self, r: Refresh) {
+    pub(crate) fn apply_refresh(&mut self, r: Refresh) {
         if r.games {
             self.reload_games();
         }
@@ -895,6 +898,8 @@ impl SaveLensApp {
             self.diff.data = None;
             self.editor.data = None;
             self.expanded_commits.clear();
+            self.questions.last_poll = None;
+            self.questions.pending.clear();
         }
         self.selected_game = Some(id);
         self.request_files();
@@ -1654,6 +1659,13 @@ impl SaveLensApp {
             DaemonEvent::Warning { .. } | DaemonEvent::Locked { .. } => self.toasts.warning(msg),
             DaemonEvent::Error { .. } => self.toasts.error(msg),
             DaemonEvent::Stopped => self.daemon = None,
+            DaemonEvent::Questions { game_id, .. } => {
+                if Some(game_id) == self.selected_game {
+                    self.questions.quiet = false;
+                    self.reload_questions();
+                }
+                self.toasts.info(msg);
+            }
             _ => {}
         }
     }
@@ -1828,6 +1840,10 @@ pub fn describe_daemon_event(ev: &DaemonEvent) -> (&'static str, String) {
         DaemonEvent::Rollback { game, files } => ("rollback", format!("{game}: rolled back {}", files.join(", "))),
         DaemonEvent::TrainerToggled { game, enabled } => {
             ("trainer", format!("{game}: trainer {}", if *enabled { "enabled" } else { "disabled" }))
+        }
+        DaemonEvent::Questions { game, rel_path, questions, .. } => {
+            let what: Vec<String> = questions.iter().map(|q| q.describe()).collect();
+            ("question", format!("{game}: {rel_path}: what is {}?", what.join(", ")))
         }
         DaemonEvent::OverlayToggleRequested => ("overlay", "overlay toggle requested".to_string()),
         DaemonEvent::Warning { message } => ("warning", message.clone()),

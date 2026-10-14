@@ -457,3 +457,37 @@ fn embedded_daemon_freezes_on_save_and_reports_latency() {
     assert!(log.iter().any(|x| x.kind == CommitKind::Auto));
     assert!(log.iter().any(|x| x.kind == CommitKind::Trainer));
 }
+
+#[test]
+fn question_card_answers_ignores_and_quiet_mode() {
+    let e = env();
+    // The game saves: Gold is pinned (never asked), HP and Level changed.
+    fs::write(e.save_path(), save_json(1100, 60.0, 8)).unwrap();
+    let out = e.engine.commit_game_save(e.game, "slot1.json", save_json(1100, 60.0, 8)).unwrap();
+    let asked: Vec<String> = out.questions.iter().map(|q| q.candidate().label()).collect();
+    assert!(!asked.contains(&"Player.Gold".to_string()), "{asked:?}");
+    assert!(asked.contains(&"Player.Level".to_string()), "{asked:?}");
+
+    let mut c = e.controller();
+    assert_eq!(c.questions().len(), asked.len());
+    assert!(!c.quiet());
+    c.set_quiet(true);
+    assert!(c.quiet(), "quiet mode hides the card but keeps the questions");
+    assert_eq!(c.questions().len(), asked.len());
+    c.set_quiet(false);
+
+    let level = c.questions().iter().find(|q| q.candidate().label() == "Player.Level").unwrap().clone();
+    let quick = level.candidate().quick_choices();
+    assert_eq!(quick[0], savelens_core::VariableCategory::Level, "suggested category first");
+    let alias = c.answer_question(level.id, savelens_core::VariableCategory::Level, None).unwrap();
+    assert_eq!(alias, "Level");
+    assert!(c.row("Level").is_some(), "answered value shows up in the live cheat table");
+    assert_eq!(c.row("Level").unwrap().current, Some(ScalarValue::Int(8)));
+
+    for q in c.questions().to_vec() {
+        let pattern = c.ignore_question(q.id, savelens_watcher::IgnoreScope::This).unwrap();
+        assert_eq!(pattern, q.candidate().label());
+    }
+    assert!(c.questions().is_empty());
+    assert!(c.engine().questions(Some(e.game), true).unwrap().len() >= 2);
+}

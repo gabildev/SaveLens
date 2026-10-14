@@ -37,7 +37,11 @@ impl Location {
     /// Reads the value at this location from a snapshot.
     pub fn read(&self, root: &Node) -> Option<ScalarValue> {
         match self {
-            Location::Ast { path } => read_ast_value(root.get(path)?),
+            Location::Ast { path } => match root.get(path)? {
+                // Pinned flags (unlocks, quest switches) read as 0 / 1.
+                Node::Bool(b) => Some(ScalarValue::Int(*b as i128)),
+                other => read_ast_value(other),
+            },
             Location::Raw { region, offset, ty, endian } => {
                 let bytes = region_bytes(root.get(region)?)?;
                 read_primitive(bytes, usize::try_from(*offset).ok()?, *ty, *endian)

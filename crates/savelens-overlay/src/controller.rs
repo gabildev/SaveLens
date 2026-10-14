@@ -11,10 +11,11 @@ use std::time::{Duration, Instant, SystemTime};
 
 use anyhow::{anyhow, bail, Context, Result};
 use crossbeam_channel::{unbounded, Receiver, Sender};
-use savelens_cas::{CommitKind, EventRecord, GameId, GameRecord, PanicReport, PanicScope};
-use savelens_core::ScalarValue;
+use savelens_cas::{CommitKind, EventRecord, GameId, GameRecord, PanicReport, PanicScope, WatchQuestion};
+use savelens_core::{ScalarValue, VariableCategory};
 use savelens_watcher::{
     CheatValue, Daemon, DaemonEvent, DaemonHandle, DaemonOptions, Engine, HotkeyAction, HotkeyConfig, HotkeyService,
+    IgnoreScope,
 };
 
 use crate::bus;
@@ -270,6 +271,10 @@ pub struct OverlayController {
     last_event_poll: Option<Instant>,
     last_request_poll: Option<Instant>,
     own_messages: VecDeque<String>,
+    /// Pending "what is this variable?" questions of the selected game.
+    questions: Vec<WatchQuestion>,
+    /// Quiet mode: questions keep being collected but the card is hidden.
+    quiet: bool,
 }
 
 impl std::fmt::Debug for OverlayController {
@@ -321,6 +326,8 @@ impl OverlayController {
             last_event_poll: None,
             last_request_poll: None,
             own_messages: VecDeque::new(),
+            questions: Vec::new(),
+            quiet: false,
         };
         if let Some(e) = preset_error {
             c.notify(NoticeLevel::Warn, format!("presets file unreadable, starting empty: {e}"));
@@ -568,6 +575,7 @@ impl OverlayController {
         self.selected = Some(id);
         self.rows.clear();
         self.stamps.clear();
+        self.questions.clear();
         self.latency = None;
         self.refresh(true).map(|_| ())
     }
@@ -595,9 +603,11 @@ impl OverlayController {
         self.refresh_pending = false;
         let Some(id) = self.selected else {
             self.rows.clear();
+            self.questions.clear();
             return Ok(false);
         };
         let game = self.engine.game(id)?;
+        self.questions = self.engine.questions(Some(id), false)?;
         match self.games.iter_mut().find(|g| g.id == id) {
             Some(slot) => *slot = game.clone(),
             None => self.games.push(game.clone()),
@@ -647,6 +657,58 @@ impl OverlayController {
             })
             .collect();
         Ok(true)
+    }
+
+    // ------------------------------------------------------------------
+    // "What is this variable?" questions
+    // ------------------------------------------------------------------
+
+    /// Pending questions of the selected game, best first.
+    pub fn questions(&self) -> &[WatchQuestion] {
+        &self.questions
+    }
+
+    /// Quiet mode hides the question card (questions are still collected).
+    pub fn quiet(&self) -> bool {
+        self.quiet
+    }
+
+    pub fn set_quiet(&mut self, quiet: bool) {
+        self.quiet = quiet;
+    }
+
+    fn reload_questions(&mut self) -> Result<()> {
+        self.questions = match self.selected {
+            Some(id) => self.engine.questions(Some(id), false)?,
+            None => Vec::new(),
+        };
+        Ok(())
+    }
+
+    /// Answers a question: the value is pinned into the cheat table.
+    /// Returns the alias it was pinned under.
+    pub fn answer_question(&mut self, id: i64, category: VariableCategory, alias: Option<&str>) -> Result<String> {
+        let (q, entry) = self.engine.answer_question(id, category, alias)?;
+        // The engine already logged it; do not echo it back as foreign activity.
+        self.own_messages.push_back(format!("{} is {category}: pinned as `{}`", q.candidate().label(), entry.alias));
+        self.notify(NoticeLevel::Info, format!("📌 {} = {category} ➡ `{}`", q.candidate().label(), entry.alias));
+        self.reload_questions()?;
+        self.refresh(true)?;
+        Ok(entry.alias)
+    }
+
+    /// "Not interesting": mutes the value (or every value like it).
+    pub fn ignore_question(&mut self, id: i64, scope: IgnoreScope) -> Result<String> {
+        let (_, mute) = self.engine.ignore_question(id, scope)?;
+        self.own_messages.push_back(format!("muted `{}`", mute.pattern));
+        self.reload_questions()?;
+        Ok(mute.pattern.0)
+    }
+
+    /// "Ask me later".
+    pub fn snooze_question(&mut self, id: i64) -> Result<()> {
+        self.engine.snooze_question(id, None)?;
+        self.reload_questions()
     }
 
     // ------------------------------------------------------------------
@@ -974,6 +1036,15 @@ impl OverlayController {
                     None => format!("snapshot of {game}: no changes"),
                 });
             }
+            DaemonEvent::Questions { game_id, game, rel_path, questions } => {
+                let what: Vec<String> = questions.iter().map(|q| q.describe()).collect();
+                self.push_activity(format!("❓ {game} {rel_path}: {}", what.join(", ")));
+                if self.selected == Some(game_id) {
+                    if let Err(e) = self.reload_questions() {
+                        self.notify(NoticeLevel::Error, format!("questions: {e:#}"));
+                    }
+                }
+            }
             DaemonEvent::Locked { path } => {
                 self.push_activity(format!("{} locked by the game (read-only snapshot)", path.display()));
             }
@@ -1008,7 +1079,7 @@ impl OverlayController {
         }
         let trainer_commit = ev.kind == "commit" && ev.message.contains("[trainer]");
         if ours {
-            if ev.kind == "commit" || ev.kind == "trainer" || ev.kind == "branch" {
+            if ev.kind == "commit" || ev.kind == "trainer" || ev.kind == "branch" || ev.kind == "watch" {
                 self.refresh_pending = true;
             }
             if own.is_none() && (ev.kind == "trainer" || trainer_commit) {
