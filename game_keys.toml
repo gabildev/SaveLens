@@ -1,0 +1,109 @@
+# ============================================================================
+#  SaveLens — game_keys.toml (documented example)
+# ============================================================================
+#
+# SaveLens decrypts and re-encrypts save files transparently. Profiles tell
+# the Auto-Crypt layer which cipher and key a game uses. Copy this file to
+# one of the following locations to add your own profiles (user profiles are
+# tried before the built-in ones and override built-ins with the same name):
+#
+#   $SAVELENS_KEYS                                (explicit file path)
+#   $SAVELENS_HOME/game_keys.toml
+#   ~/.config/savelens/game_keys.toml             (Linux)
+#   %APPDATA%\savelens\game_keys.toml             (Windows)
+#
+# `savelens keys` lists every loaded profile and the files they came from.
+#
+# How a profile is chosen for a file:
+#   1. profiles whose `app_ids` contain the game's Steam AppID,
+#   2. profiles whose `file_patterns` match the save file name (glob,
+#      case-insensitive),
+#   3. profiles with `generic = true` — only tried on high-entropy payloads.
+# A decryption is only accepted when the plaintext is recognised by the rest
+# of the pipeline (a compression stream or a structural codec such as JSON),
+# so a wrong profile can never corrupt a save: it is simply skipped.
+#
+# Single-byte XOR obfuscation is brute-forced automatically and needs no
+# profile.
+#
+# ----------------------------------------------------------------------------
+#  Field reference
+# ----------------------------------------------------------------------------
+#  name           unique profile id (shown in the integrity bar)
+#  description    free text
+#  scheme         one of:
+#                   "aes-128-cbc" "aes-192-cbc" "aes-256-cbc"
+#                   "aes-128-ecb" "aes-192-ecb" "aes-256-ecb"
+#                   "aes-128-ctr" "aes-192-ctr" "aes-256-ctr"
+#                   "xor"          repeating key
+#                   "xor-rolling"  key evolves along the data (see `rolling`)
+#                   "es3"          Unity Easy Save 3: IV(16) || AES-128-CBC,
+#                                  key = PBKDF2-HMAC-SHA1(password, IV, 100)
+#  app_ids        list of Steam AppIDs
+#  file_patterns  list of file-name globs ("*.sav", "SaveFile.txt")
+#  key_hex        key as hex (AES: 16/24/32 bytes; XOR: any length)
+#  key_text       key as UTF-8 text (alternative to key_hex)
+#  password       ES3 password
+#  iv             "prefix" (first 16 bytes of the file, default),
+#                 "zero" (all-zero IV) or "fixed" (use iv_hex)
+#  iv_hex         16-byte IV as hex when iv = "fixed"
+#  padding        "pkcs7" (default), "none" (payload must be block aligned)
+#                 or "zero" (zero padding kept inside the payload)
+#  rolling        for xor-rolling: "fixed", "index" (k[i] = key[i%n] ^ i)
+#                 or "cipher-feedback" (k[i] = key[i%n] ^ c[i-1])
+#  generic        true = try on any high-entropy file
+#
+# ----------------------------------------------------------------------------
+#  Examples
+# ----------------------------------------------------------------------------
+
+# Unity Easy Save 3 with a game-specific password.
+[[profile]]
+name = "my-unity-game"
+description = "ES3 save of a Unity game (password taken from the game's ES3Settings)"
+scheme = "es3"
+password = "replace-with-the-game-password"
+app_ids = [1234560]
+file_patterns = ["SaveFile.es3", "*.es3"]
+
+# AES-256-CBC with the IV stored in the first 16 bytes of the file.
+[[profile]]
+name = "aes-prefixed-iv"
+description = "Custom engine: IV || AES-256-CBC-PKCS7(json)"
+scheme = "aes-256-cbc"
+key_hex = "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f"
+iv = "prefix"
+padding = "pkcs7"
+file_patterns = ["*.savx"]
+
+# AES-128-ECB without padding (block-aligned binary blobs).
+[[profile]]
+name = "aes-ecb-raw"
+scheme = "aes-128-ecb"
+key_text = "0123456789abcdef"
+padding = "none"
+file_patterns = ["profile.bin"]
+
+# AES-128-CTR with a fixed IV.
+[[profile]]
+name = "aes-ctr-fixed"
+scheme = "aes-128-ctr"
+key_hex = "2b7e151628aed2a6abf7158809cf4f3c"
+iv = "fixed"
+iv_hex = "f0f1f2f3f4f5f6f7f8f9fafbfcfdfeff"
+file_patterns = ["world*.dat"]
+
+# Repeating-key XOR.
+[[profile]]
+name = "xor-fixed"
+scheme = "xor"
+key_text = "SECRET"
+file_patterns = ["*.xsav"]
+
+# Rolling XOR with cipher feedback.
+[[profile]]
+name = "xor-feedback"
+scheme = "xor-rolling"
+key_hex = "a5"
+rolling = "cipher-feedback"
+file_patterns = ["*.rsav"]

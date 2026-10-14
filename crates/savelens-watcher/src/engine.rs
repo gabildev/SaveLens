@@ -232,7 +232,10 @@ impl Engine {
         if !save_root.is_dir() {
             return Err(EngineError::NotFound(format!("save directory {} does not exist", save_root.display())));
         }
-        let root = save_root.canonicalize().map_err(|e| EngineError::io(save_root, e))?;
+        save_root.canonicalize().map_err(|e| EngineError::io(save_root, e))?;
+        // Canonical, without the Windows `\\?\` verbatim prefix so that paths
+        // reported by the filesystem watcher match the stored root.
+        let root = savelens_discovery::normalize_path(save_root);
         let game = self.store.ensure_game(name, app_id, &root, patterns, runtime)?;
         let commit = self.snapshot(game.id, "import current saves", CommitKind::Import)?;
         self.store.log_event(Some(game.id), "track", &format!("tracking {} at {}", game.name, root.display()))?;
