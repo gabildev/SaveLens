@@ -2,7 +2,7 @@
 //! real save directory: rendering with `TestBackend` and key-driven flows.
 
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
@@ -486,7 +486,7 @@ fn quitting_and_watcher_daemon() {
 }
 
 #[cfg(target_os = "linux")]
-fn write(path: &Path, content: &str) {
+fn write(path: &std::path::Path, content: &str) {
     fs::create_dir_all(path.parent().unwrap()).unwrap();
     fs::write(path, content).unwrap();
 }
