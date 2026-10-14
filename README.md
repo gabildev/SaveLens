@@ -45,6 +45,7 @@ any sub-tree of an old save (`Player.Inventory`) into your current progress.
 - [Quick start](#quick-start)
 - [The pipeline](#the-pipeline)
 - [Supported formats](#supported-formats)
+- [Tested on real games](#tested-on-real-games)
 - [CLI reference](#cli-reference)
 - [TUI, GUI and overlay](#tui-gui-and-overlay)
 - [Encryption profiles (`game_keys.toml`)](#encryption-profiles-game_keystoml)
@@ -148,8 +149,8 @@ savelens panic-restore                  # oops: back to the exact previous bytes
 flowchart LR
     F[save file] --> C1{Checksum hunter<br/>CRC32 · CRC32C · Adler32 · FNV-1a · MD5 · SHA1 · SHA256}
     C1 --> C2{Auto-Crypt<br/>AES CBC/ECB/CTR · XOR · ES3 · game_keys.toml}
-    C2 --> C3{Compression<br/>zlib · gzip · deflate · LZ4 · zstd · Base64}
-    C3 --> P[Structural codec<br/>JSON · GVAS · NRBF · SQLite · NBT · MsgPack · INI · XML · plist · raw]
+    C2 --> C3{Compression<br/>zlib · gzip · deflate · LZ4 · zstd · Base64 · LZString · Palworld PlZ}
+    C3 --> P[Structural codec<br/>JSON · GVAS · NRBF · SQLite · NBT · MsgPack · INI · ConfigNode · XML · plist · BND4 · Anvil · ZIP · pickle · raw]
     P --> A[(SaveAst + FormatEnvelope)]
     A -- edit --> P2[re-serialise] --> R3[re-compress] --> R2[re-encrypt] --> R1[re-sign] --> W[atomic write]
 ```
@@ -173,7 +174,33 @@ The integrity bar summarises it: `Lossless Verified · Checksum Auto-Matched: CR
 | INI / CFG | `ini` | line heuristics | values + structure | Comments, quotes, delimiters, line endings preserved. |
 | XML | `xml` | well-formed | values | Lossless tokenizer, entities, CDATA. |
 | XML plist | `plist` | `<plist>` | values | dict/array/integer/real/string/bool/date/data. |
+| KSP ConfigNode | `confignode` | `NAME` / `{` blocks | values + entries | Kerbal Space Program `.sfs`/`.craft`; line-exact, repeated nodes as `NAME#2`. |
+| FromSoftware BND4 | `bnd4` | `BND4` magic | per entry | Elden Ring / Dark Souls III `.sl2`; per-slot MD5 re-signed, DS3 slot AES applied once; fixed entry sizes. |
+| Minecraft Anvil | `anvil` | `.mca`/`.mcr` header | per chunk | Each chunk opened as NBT through zlib/gzip; in-place rewrite or relocation to new sectors. |
+| ZIP | `zip` | `PK` + central directory | per entry | Ren'Py `.save`; entries opened recursively, CRC/sizes/offsets (ZIP64 too) patched on edit. |
+| Python pickle | `pickle` | protocols 0–5 | scalars | Never executes code (symbolic VM); Ren'Py `store.*` variables; int opcode widening, FRAME recompute. |
 | Raw binary | `raw` | fallback | in-place | String index, block hashes; the scanner edits primitives at offsets. |
+
+## Tested on real games
+
+Besides synthetic fixtures, CI runs SaveLens against **50 real save files** published by other open-source
+projects (fetched at pinned commits by `scripts/fetch-real-saves.sh`, never redistributed): every file must
+open with the expected codec and layers, re-encode to its exact original bytes, and survive an edit probe.
+See [`tests/real-saves/README.md`](tests/real-saves/README.md) for the sources.
+
+| Game | Pipeline found |
+|---|---|
+| Deep Rock Galactic + 22 UE4/UE5 saves | `gvas` (0 opaque properties) |
+| Palworld | Palworld PlZ (zlib / zlib×2) → `gvas` |
+| Minecraft | gzip → `nbt`, `anvil` regions → zlib/gzip → `nbt` |
+| Slay the Spire | Base64 → XOR `key` → `json` |
+| R.E.P.O., Strike Force Heroes | Easy Save 3 (PBKDF2 + AES) → `json` (ES3 unquoted-key dialect) |
+| SugarCube / Twine | LZString → `json` |
+| Kerbal Space Program | `confignode` |
+| Stardew Valley | `xml` |
+| Ren'Py (6.99, 7.4, 8.3) | `zip` → `log` deflate → `pickle` |
+| Elden Ring | `bnd4` → per-slot MD5 → raw slot |
+| Terraria | `.plr` AES-128-CBC → raw, `.wld` raw |
 
 ## CLI reference
 

@@ -59,7 +59,7 @@ jobs:
       - name: Real-save round trip + edit tests
         env:
           SAVELENS_REQUIRE_REAL_SAVES: "1"
-        run: cargo test -p savelens-codecs --test real_saves --test gvas_real --test ksp_real --locked -- --nocapture
+        run: cargo test -p savelens-codecs --test real_saves --test gvas_real --test ksp_real --test fromsoft_minecraft_real --test renpy_real --locked -- --nocapture
 
   msrv:
     name: MSRV 1.88

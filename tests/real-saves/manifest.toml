@@ -277,3 +277,73 @@ app_id = 220200
 codec = "confignode"
 lossless = true
 edit = { path = "GAME.FLIGHTSTATE.UT", value = 100000.25 }
+
+[[save]]
+file = "elden-ring/ER0000.sl2"
+game = "Elden Ring"
+app_id = 1245620
+codec = "bnd4"
+lossless = true
+
+[[save]]
+file = "minecraft/r.1.19.4.mca"
+game = "Minecraft (region)"
+codec = "anvil"
+lossless = true
+edit = { path = "0,0.InhabitedTime", value = 123456 }
+
+[[save]]
+file = "minecraft/r.0.0.mca"
+game = "Minecraft (region)"
+codec = "anvil"
+lossless = true
+edit = { path = "1,3.Level.InhabitedTime", value = 123456 }
+
+[[save]]
+file = "minecraft/r.4.-4.mca"
+game = "Minecraft (region)"
+codec = "anvil"
+lossless = true
+edit = { path = "0,31.Level.InhabitedTime", value = 123456 }
+
+[[save]]
+file = "minecraft/regiontest.mca"
+game = "Minecraft (region, corrupt fixture)"
+codec = "anvil"
+lossless = true
+edit = { path = "1,0.Level.LastUpdate", value = 42 }
+
+[[save]]
+file = "renpy/renrpg-1-1-LT1.save"
+game = "RenRPG (Ren'Py 6.99)"
+codec = "zip"
+lossless = true
+edit = { path = "log[0][\"store.cash\"]", value = 100008 }
+
+[[save]]
+file = "renpy/karryn-1-1-LT1.save"
+game = "Karryn's Prison (Ren'Py 7.4)"
+codec = "zip"
+lossless = true
+edit = { path = "log[0][\"store.daphnesub\"]", value = 100000 }
+
+[[save]]
+file = "renpy/rpgsaveeditor-1-1-LT1.save"
+game = "Ren'Py 8.3 fixture"
+codec = "zip"
+lossless = true
+edit = { path = "log[0][\"store.money\"]", value = 100120 }
+
+[[save]]
+file = "renpy/p2.pickle"
+game = "Ren'Py store (pickle protocol 2)"
+codec = "pickle"
+lossless = true
+edit = { path = "[0][\"store.money\"]", value = 999999 }
+
+[[save]]
+file = "renpy/p5.pickle"
+game = "Ren'Py store (pickle protocol 5)"
+codec = "pickle"
+lossless = true
+edit = { path = "[0][\"store.mc_name\"]", value = "Alexandra" }

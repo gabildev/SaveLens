@@ -116,6 +116,7 @@ impl EnvelopePipeline {
         if depth > self.options.max_layers {
             return None;
         }
+        let random = entropy::looks_random(data);
         for profile in self.keys.candidates(ctx) {
             let specific = ctx.app_id.is_some_and(|id| profile.app_ids.contains(&id))
                 || ctx.file_name.as_deref().is_some_and(|n| profile.matches_file(n));
@@ -123,7 +124,7 @@ impl EnvelopePipeline {
                 continue;
             }
             let Ok((layer, inner)) = CryptoLayer::open(profile, data) else { continue };
-            if self.recognized(&inner, ctx, depth + 1) || entropy::shannon(&inner) < 6.0 {
+            if self.recognized(&inner, ctx, depth + 1) || (random && entropy::shannon(&inner) < 6.0) {
                 return Some((Box::new(layer), inner));
             }
         }
@@ -144,7 +145,10 @@ impl EnvelopePipeline {
                 continue;
             }
             let Ok((layer, inner)) = CryptoLayer::open(profile, data) else { continue };
-            if self.recognized(&inner, ctx, depth + 1) || (specific && entropy::shannon(&inner) < 6.0) {
+            // An unrecognised result is only accepted when the input looked
+            // encrypted: decrypting plaintext (e.g. runs of zero blocks with
+            // AES-CBC) also yields low-entropy output and must not peel again.
+            if self.recognized(&inner, ctx, depth + 1) || (specific && random && entropy::shannon(&inner) < 6.0) {
                 return Some((Box::new(layer), inner));
             }
         }
@@ -629,5 +633,17 @@ mod tests {
         let p = pipeline();
         assert!(p.open_with_codec(b"not json", &DetectContext::default(), "json").is_err());
         assert!(p.open_with_codec(b"x", &DetectContext::default(), "nope").is_err());
+    }
+
+    #[test]
+    fn plaintext_is_never_decrypted_by_a_matching_profile() {
+        // `USER_DATA*` matches the dark-souls-3 AES-CBC profile; zero blocks
+        // "decrypt" into a repeating low-entropy block, which must not be
+        // taken for a successful decryption.
+        let p = EnvelopePipeline::builtin();
+        let ctx = DetectContext::for_game("USER_DATA001", Some(374320));
+        let s = p.open(&vec![0u8; 4096], &ctx).unwrap();
+        assert!(s.layers().is_empty(), "{:?}", s.layers());
+        assert_eq!(s.encode().unwrap(), vec![0u8; 4096]);
     }
 }

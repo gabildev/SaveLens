@@ -63,3 +63,13 @@ scheme = "es3"
 password = "t36gref9u84y7f43g"
 app_ids = [739630]
 file_patterns = ["SaveFile.txt"]
+
+[[profile]]
+name = "dark-souls-3"
+description = "Dark Souls III (PC) DS30000.sl2: every USER_DATA entry of the BND4 binder is MD5(16) ‖ IV(16) ‖ AES-128-CBC data. Applied exactly once by the bnd4 codec (only to entries whose data after the MD5 looks encrypted); the codec removes it from the pipeline used for entry payloads because the generic crypto loop would re-apply it to the low-entropy plaintext. The IV prefix is kept and no padding is stripped, so re-encryption is bit-exact."
+scheme = "aes-128-cbc"
+key_hex = "FD464D695E69A39A10E319A7ACE8B7FA"
+iv = "prefix"
+padding = "none"
+app_ids = [374320]
+file_patterns = ["USER_DATA*"]

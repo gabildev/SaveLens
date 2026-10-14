@@ -47,7 +47,7 @@ This file is the contract for anyone (human or agent) working on the code base.
 | Crate | Responsibility |
 |-------|----------------|
 | `savelens-core` | `SaveAst` (`Node`, `NodePath`, `FormatEnvelope`), Merkle hashing (`blake3`), semantic diff, scanner engine (AST + raw bytes), cherry-pick engine. Pure logic, no I/O. |
-| `savelens-codecs` | Reversible `EnvelopePipeline`: crypto (AES-CBC/ECB/CTR, XOR, ES3 PBKDF2+AES, `game_keys.toml`, entropy) → checksum hunter → compression (zlib/gzip/deflate/LZ4/zstd/base64) → structural codecs (JSON + nested JSON, UE GVAS, .NET NRBF, Unity PlayerPrefs, SQLite, NBT, MessagePack, INI/CFG, XML, XML plist, raw binary). |
+| `savelens-codecs` | Reversible `EnvelopePipeline`: crypto (AES-CBC/ECB/CTR, XOR, ES3 PBKDF2+AES, `game_keys.toml`, entropy) → checksum hunter → compression (zlib/gzip/deflate/LZ4/zstd/base64, LZString, Palworld PlZ) → structural codecs (JSON + nested JSON, UE GVAS, .NET NRBF, Unity PlayerPrefs, SQLite, NBT, MessagePack, INI/CFG, KSP ConfigNode, XML, XML plist, BND4, Anvil, ZIP, Python pickle, raw binary). Containers open their entries through the full pipeline (`codecs/container.rs`). |
 | `savelens-cas` | Content-addressable store: FastCDC chunking + zstd chunk files + SQLite metadata (games, branches, commits, tags, changelogs, cheat table, safety backups). Mutation protocol + panic restore. |
 | `savelens-discovery` | Steam library/AppManifest parsing (native, Flatpak, Snap, Windows), Proton prefix mapping, embedded save-path rules, engine heuristics (Unity `app.info`, Unreal, Godot, …), live process file hunter. |
 | `savelens-watcher` | `Engine` facade used by every front-end, background daemon (debounce, lock check, auto-commit, freeze-on-save trainer), atomic hot-swap, global hotkeys. |
@@ -83,3 +83,6 @@ cargo run -p savelens-cli -- --help
 ```
 
 Set `SAVELENS_HOME=/some/dir` to sandbox the data directory (tests always do this).
+
+Real-game corpus: `scripts/fetch-real-saves.sh`, then `cargo test -p savelens-codecs --test real_saves`.
+New real files go into the fetch script (pinned commit) and `tests/real-saves/manifest.toml`.

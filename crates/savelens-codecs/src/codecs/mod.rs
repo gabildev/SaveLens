@@ -1,5 +1,7 @@
 //! Structural codecs.
 
+pub mod anvil;
+pub mod bnd4;
 pub mod confignode;
 pub mod container;
 pub mod gvas;
@@ -8,11 +10,13 @@ pub mod json;
 pub mod msgpack;
 pub mod nbt;
 pub mod nrbf;
+pub mod pickle;
 pub mod playerprefs;
 pub mod plist;
 pub mod raw;
 pub mod sqlite;
 pub mod xml;
+pub mod zip;
 
 use std::sync::Arc;
 
@@ -32,6 +36,10 @@ pub fn builtin() -> Vec<Arc<dyn StructuralCodec>> {
         Arc::new(ini::IniCodec),
         Arc::new(xml::XmlCodec),
         Arc::new(plist::PlistCodec),
+        Arc::new(bnd4::Bnd4Codec),
+        Arc::new(anvil::AnvilCodec),
+        Arc::new(zip::ZipCodec),
+        Arc::new(pickle::PickleCodec),
         Arc::new(raw::RawCodec),
     ]
 }
