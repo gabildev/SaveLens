@@ -119,7 +119,7 @@ pub fn layout(commits: &[CommitRecord], branches: &[BranchRecord], current_branc
         let Some(parent) = n.parent else { continue };
         let Some(&prow) = row_by_id.get(&parent) else { continue };
         if prow <= n.row {
-            // Parents are always older (smaller id → larger row); anything else is corrupt data.
+            // Parents are always older (smaller id ➡ larger row); anything else is corrupt data.
             continue;
         }
         let plane = nodes[prow].lane;

@@ -801,7 +801,7 @@ impl OverlayController {
             None => PanicScope::Latest,
         };
         let rep = self.engine.panic_restore(&scope)?;
-        self.notify(NoticeLevel::Warn, format!("PANIC RESTORE: {} ← {}", rep.path.display(), rep.restored_tag));
+        self.notify(NoticeLevel::Warn, format!("PANIC RESTORE: {} ⬅ {}", rep.path.display(), rep.restored_tag));
         if self.selected.is_some() {
             self.refresh(true)?;
         }
@@ -947,7 +947,7 @@ impl OverlayController {
                     });
                     self.refresh_pending = true;
                 }
-                self.push_activity(format!("❄ {game}: {} → {rel_path} ({elapsed_ms:.1} ms)", applied.join(", ")));
+                self.push_activity(format!("❄ {game}: {} ➡ {rel_path} ({elapsed_ms:.1} ms)", applied.join(", ")));
             }
             DaemonEvent::Committed { game_id, game, summary, commit, .. } => {
                 if self.selected == Some(game_id) {
@@ -957,7 +957,7 @@ impl OverlayController {
             }
             DaemonEvent::PanicRestored { path, tag } => {
                 self.refresh_pending = true;
-                self.push_activity(format!("panic restore {} ← {tag}", path.display()));
+                self.push_activity(format!("panic restore {} ⬅ {tag}", path.display()));
             }
             DaemonEvent::Rollback { game, files } => {
                 self.refresh_pending = true;

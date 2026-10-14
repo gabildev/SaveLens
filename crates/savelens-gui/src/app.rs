@@ -1808,7 +1808,7 @@ pub fn describe_daemon_event(ev: &DaemonEvent) -> (&'static str, String) {
         DaemonEvent::Watching { game, root } => ("watching", format!("watching {game} at {}", root.display())),
         DaemonEvent::Unwatched { game } => ("unwatched", format!("stopped watching {game}")),
         DaemonEvent::Committed { game, rel_path, commit, summary, .. } => {
-            ("commit", format!("{game}: {rel_path} saved → #{commit} {summary}"))
+            ("commit", format!("{game}: {rel_path} saved ➡ #{commit} {summary}"))
         }
         DaemonEvent::Unchanged { game, rel_path } => {
             ("unchanged", format!("{game}: {rel_path} rewritten without changes"))

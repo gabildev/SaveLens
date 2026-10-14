@@ -35,7 +35,7 @@ pub(super) fn draw(app: &mut SaveLensApp, ui: &mut egui::Ui) {
                     }
                 }
             });
-        ui.label(RichText::new("→  WORKING").color(theme::CYAN).strong());
+        ui.label(RichText::new("➡  WORKING").color(theme::CYAN).strong());
         if ui.add(theme::ghost_button("↻ Reload", theme::CYAN)).clicked() {
             app.intents.push(Intent::LoadDiff);
         }

@@ -482,17 +482,17 @@ impl Change {
         }
     }
 
-    /// Compact effect for summaries (`+500 Gold`, `Main_02 → Completed`).
+    /// Compact effect for summaries (`+500 Gold`, `Main_02 -> Completed`).
     pub fn short_effect(&self, aliases: &dyn AliasResolver) -> String {
         let label = aliases.alias(&self.path).unwrap_or_else(|| self.path.leaf_label());
         match &self.kind {
             ChangeKind::Modified { new, .. } => match self.numeric_delta() {
                 Some(d) => format!("{} {label}", format_delta(d)),
-                None => format!("{label} → {}", new.preview(24)),
+                None => format!("{label} -> {}", new.preview(24)),
             },
             ChangeKind::Added { .. } => format!("+{label}"),
             ChangeKind::Removed { .. } => format!("-{label}"),
-            ChangeKind::TypeChanged { new, .. } => format!("{label} → {}", new.preview(24)),
+            ChangeKind::TypeChanged { new, .. } => format!("{label} -> {}", new.preview(24)),
             ChangeKind::BytesChanged { ranges, .. } => {
                 format!("{label} ~{} bytes", ranges.iter().map(|r| r.new.len()).sum::<usize>())
             }
@@ -516,7 +516,7 @@ impl SemanticDiff {
         self.changes.iter().map(|c| c.describe_with(aliases)).collect()
     }
 
-    /// One-line summary (`+500 Gold, +1 Level, Main_02 → "Completed" (+3 more)`).
+    /// One-line summary (`+500 Gold, +1 Level, Main_02 -> "Completed" (+3 more)`).
     ///
     /// Aliased changes are listed first, then numeric changes, then the rest.
     pub fn summary(&self, aliases: &dyn AliasResolver, max_items: usize) -> String {
@@ -594,7 +594,7 @@ mod tests {
             ]
         );
         let alias = |p: &NodePath| (p.to_string() == "Player.Gold").then(|| "Oro".to_string());
-        assert_eq!(d.summary(&alias, 5), "+300 Oro, Main_02 → \"Completed\"");
+        assert_eq!(d.summary(&alias, 5), "+300 Oro, Main_02 -> \"Completed\"");
     }
 
     #[test]

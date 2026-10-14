@@ -82,7 +82,7 @@ fn controls(app: &mut SaveLensApp, ui: &mut egui::Ui) {
             }
             if n == 2 {
                 ui.label(
-                    RichText::new(if app.scanner.filter == FilterKind::Between { "and" } else { "→" })
+                    RichText::new(if app.scanner.filter == FilterKind::Between { "and" } else { "➡" })
                         .color(theme::TEXT_DIM),
                 );
                 ui.add(
@@ -146,7 +146,7 @@ fn results(app: &mut SaveLensApp, ui: &mut egui::Ui) {
         .history()
         .iter()
         .enumerate()
-        .map(|(i, s)| format!("{}. {} @ {} → {}", i + 1, s.filter, s.snapshot_label, s.remaining))
+        .map(|(i, s)| format!("{}. {} @ {} ➡ {}", i + 1, s.filter, s.snapshot_label, s.remaining))
         .collect();
     ui.horizontal_wrapped(|ui| {
         theme::section_title(ui, "Results");

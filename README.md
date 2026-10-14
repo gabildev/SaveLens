@@ -27,6 +27,15 @@ It finds variables across snapshots like Cheat Engine does in RAM — but on dis
 encryption, compression and checksums — lets you alias, freeze and edit them, and restores
 any sub-tree of an old save (`Player.Inventory`) into your current progress.
 
+<p align="center">
+  <img src="docs/screenshots/gui-timeline.png" width="49%" alt="Timeline with semantic commit cards and branches">
+  <img src="docs/screenshots/gui-scanner.png" width="49%" alt="Scanner Studio with the cheat table">
+</p>
+<p align="center">
+  <img src="docs/screenshots/gui-tree-diff.png" width="66%" alt="Visual tree diff with Cherry-Pick this section">
+  <img src="docs/screenshots/overlay.png" width="26%" alt="Translucent mod-menu overlay">
+</p>
+
 ## Table of contents
 
 - [Why](#why)

@@ -27,11 +27,11 @@ pub(super) fn draw(app: &mut SaveLensApp, ui: &mut egui::Ui) {
         ui.heading(RichText::new("Timeline").color(theme::TEXT));
         ui.add_space(theme::SPACING);
         let has_game = app.selected_game.is_some();
-        if ui.add_enabled(has_game, theme::accent_button("⊕ Quick snapshot", theme::CYAN)).clicked() {
+        if ui.add_enabled(has_game, theme::accent_button("➕ Quick snapshot", theme::CYAN)).clicked() {
             app.intents.push(Intent::QuickSnapshot);
         }
         if ui
-            .add_enabled(has_game, theme::ghost_button("↶ Quick rollback", theme::AMBER))
+            .add_enabled(has_game, theme::ghost_button("↩ Quick rollback", theme::AMBER))
             .on_hover_text("Restore the previous commit of the current branch")
             .clicked()
         {
@@ -43,9 +43,9 @@ pub(super) fn draw(app: &mut SaveLensApp, ui: &mut egui::Ui) {
             for b in &h.branches {
                 let current = b.name == h.current_branch;
                 let btn = if current {
-                    theme::accent_button(&format!("⎇ {}", b.name), theme::MAGENTA)
+                    theme::accent_button(&format!("🔀 {}", b.name), theme::MAGENTA)
                 } else {
-                    theme::ghost_button(&format!("⎇ {}", b.name), theme::MAGENTA)
+                    theme::ghost_button(&format!("🔀 {}", b.name), theme::MAGENTA)
                 };
                 if ui.add_enabled(!current && b.head.is_some(), btn).clicked() {
                     app.intents.push(Intent::SwitchBranch(b.name.clone()));
@@ -98,9 +98,9 @@ pub(super) fn draw(app: &mut SaveLensApp, ui: &mut egui::Ui) {
                             for b in &head_here {
                                 let color = theme::lane_color(h.layout.lane_of(&b.name).unwrap_or(b.lane));
                                 let label = if b.is_current {
-                                    format!("⎇ {} (HEAD)", b.name)
+                                    format!("🔀 {} (HEAD)", b.name)
                                 } else {
-                                    format!("⎇ {}", b.name)
+                                    format!("🔀 {}", b.name)
                                 };
                                 theme::chip(ui, &label, color);
                             }
@@ -119,9 +119,9 @@ pub(super) fn draw(app: &mut SaveLensApp, ui: &mut egui::Ui) {
                         ui.horizontal_wrapped(|ui| {
                             if n_lines > 0 {
                                 let label = if is_expanded {
-                                    format!("▾ hide changelog ({n_lines})")
+                                    format!("⏷ hide changelog ({n_lines})")
                                 } else {
-                                    format!("▸ changelog ({n_lines})")
+                                    format!("⏵ changelog ({n_lines})")
                                 };
                                 if ui.add(egui::Button::new(RichText::new(label).small()).frame(false)).clicked()
                                     && !expanded.remove(&c.id)

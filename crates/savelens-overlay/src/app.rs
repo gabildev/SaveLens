@@ -122,7 +122,7 @@ impl OverlayApp {
     fn header(&mut self, ui: &mut Ui, ctx: &egui::Context) {
         let resp = ui
             .horizontal(|ui| {
-                ui.label(RichText::new("◆ SAVELENS").color(theme::CYAN).strong().heading());
+                ui.label(RichText::new("🔸 SAVELENS").color(theme::CYAN).strong().heading());
                 let games: Vec<(i64, String)> =
                     self.controller.games().iter().map(|g| (g.id, g.name.clone())).collect();
                 if !games.is_empty() {
@@ -146,7 +146,7 @@ impl OverlayApp {
                     }
                 }
                 ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                    if ui.small_button("✕").on_hover_text("Close the overlay").clicked() {
+                    if ui.small_button("✖").on_hover_text("Close the overlay").clicked() {
                         ctx.send_viewport_cmd(ViewportCommand::Close);
                     }
                     if ui.small_button("—").on_hover_text("Minimize").clicked() {
@@ -157,7 +157,7 @@ impl OverlayApp {
                         DaemonMode::External { pid } => (theme::GREEN, format!("`savelens watch` running (pid {pid})")),
                         DaemonMode::Absent => (theme::AMBER, "no daemon: auto-freeze inactive".to_string()),
                     };
-                    ui.label(RichText::new("●").color(color)).on_hover_text(tip);
+                    ui.label(RichText::new("⏺").color(color)).on_hover_text(tip);
                 });
             })
             .response;
@@ -194,7 +194,7 @@ impl OverlayApp {
                         let tip = if l.applied.is_empty() {
                             format!("{:?}", l.source)
                         } else {
-                            format!("{} → {} ({:?})", l.applied.join(", "), l.rel_path, l.source)
+                            format!("{} ➡ {} ({:?})", l.applied.join(", "), l.rel_path, l.source)
                         };
                         let mut text = format!("⚡ {:.1} ms", l.ms);
                         if l.is_slow() {
@@ -255,8 +255,8 @@ impl OverlayApp {
         }
         ui.horizontal(|ui| {
             let (arrow, color) = match row.trend() {
-                Trend::Up => ("▲", theme::GREEN),
-                Trend::Down => ("▼", theme::MAGENTA),
+                Trend::Up => ("⏶", theme::GREEN),
+                Trend::Down => ("⏷", theme::MAGENTA),
                 Trend::Flat => ("=", theme::DIM),
                 Trend::Unknown => ("·", theme::DIM),
             };

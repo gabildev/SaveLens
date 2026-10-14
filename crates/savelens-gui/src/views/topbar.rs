@@ -8,7 +8,7 @@ use crate::theme;
 
 pub(super) fn draw(app: &mut SaveLensApp, ui: &mut egui::Ui) {
     ui.horizontal_wrapped(|ui| {
-        ui.label(RichText::new("◆ SAVELENS").size(22.0).strong().color(theme::CYAN).extra_letter_spacing(2.0));
+        ui.label(RichText::new("🔸 SAVELENS").size(22.0).strong().color(theme::CYAN).extra_letter_spacing(2.0));
         ui.add_space(theme::SPACING * 2.0);
 
         // Game selector.
@@ -25,7 +25,7 @@ pub(super) fn draw(app: &mut SaveLensApp, ui: &mut egui::Ui) {
             });
 
         if let Some(g) = app.selected_game_record() {
-            theme::chip(ui, &format!("⎇ {}", g.current_branch), theme::MAGENTA);
+            theme::chip(ui, &format!("🔀 {}", g.current_branch), theme::MAGENTA);
         }
 
         // File selector.
@@ -64,12 +64,12 @@ pub(super) fn draw(app: &mut SaveLensApp, ui: &mut egui::Ui) {
     ui.horizontal_wrapped(|ui| {
         // Watcher status.
         let (status, color) = if app.daemon_running() {
-            ("● Watcher running (embedded)", theme::LIME)
+            ("⏺ Watcher running (embedded)", theme::LIME)
         } else if let Some(d) = &app.external_daemon {
             if d.pid == std::process::id() {
-                ("● Watcher running", theme::LIME)
+                ("⏺ Watcher running", theme::LIME)
             } else {
-                ("● External watcher running", theme::CYAN)
+                ("⏺ External watcher running", theme::CYAN)
             }
         } else {
             ("○ Watcher stopped", theme::TEXT_DIM)
