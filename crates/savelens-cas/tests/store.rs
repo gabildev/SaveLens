@@ -268,6 +268,15 @@ fn events_requests_and_heartbeat() {
     assert_eq!(reqs.len(), 1);
     assert_eq!(reqs[0].1, "panic-restore");
     assert!(store.take_requests().unwrap().is_empty());
+    // Selective consumption leaves other consumers' requests pending.
+    store.push_request("toggle-overlay", &serde_json::json!({})).unwrap();
+    store.push_request("snapshot", &serde_json::json!({"game": 2})).unwrap();
+    let mine = store.take_requests_for(&["snapshot", "panic-restore"]).unwrap();
+    assert_eq!(mine.len(), 1);
+    assert_eq!(mine[0].2["game"], 2);
+    let rest = store.take_requests_for(&["toggle-overlay"]).unwrap();
+    assert_eq!(rest.len(), 1);
+    assert!(store.take_requests().unwrap().is_empty());
 }
 
 #[test]

@@ -1,6 +1,25 @@
 [package]
 name = "savelens-overlay"
+description = "SaveLens translucent always-on-top mod menu: live cheat table, disk trainer (freeze-on-save), presets and global hotkeys"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
 
 [dependencies]
+savelens-core.workspace = true
+savelens-cas.workspace = true
+savelens-watcher.workspace = true
+eframe.workspace = true
+egui.workspace = true
+anyhow.workspace = true
+crossbeam-channel.workspace = true
+tracing.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+savelens-codecs.workspace = true
+tempfile.workspace = true

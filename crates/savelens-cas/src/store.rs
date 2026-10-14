@@ -1162,6 +1162,30 @@ impl Store {
         Ok(g.conn.last_insert_rowid())
     }
 
+    /// Takes the pending requests whose action is one of `actions` (oldest
+    /// first, marked handled); requests for other consumers stay pending.
+    pub fn take_requests_for(&self, actions: &[&str]) -> CasResult<Vec<(i64, String, serde_json::Value)>> {
+        let mut g = self.inner.lock();
+        let tx = g.conn.transaction()?;
+        let rows: Vec<(i64, String, String)> = {
+            let mut stmt = tx.prepare("SELECT id, action, payload FROM requests WHERE handled = 0 ORDER BY id")?;
+            let rows = stmt
+                .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?
+                .collect::<Result<Vec<_>, _>>()?;
+            rows
+        };
+        let mut out = Vec::new();
+        for (id, action, payload) in rows {
+            if actions.contains(&action.as_str()) {
+                tx.execute("UPDATE requests SET handled = 1 WHERE id = ?1", params![id])?;
+                out.push((id, action, serde_json::from_str(&payload)?));
+            }
+        }
+        tx.execute("DELETE FROM requests WHERE handled = 1 AND at < ?1", params![now_ms() - 86_400_000])?;
+        tx.commit()?;
+        Ok(out)
+    }
+
     /// Takes pending requests (marks them handled).
     pub fn take_requests(&self) -> CasResult<Vec<(i64, String, serde_json::Value)>> {
         let mut g = self.inner.lock();

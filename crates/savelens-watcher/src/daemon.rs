@@ -530,7 +530,7 @@ impl Daemon {
         events: &Sender<DaemonEvent>,
         own_writes: &mut HashMap<PathBuf, (String, Instant)>,
     ) {
-        let reqs = match self.engine.store().take_requests() {
+        let reqs = match self.engine.store().take_requests_for(DAEMON_REQUESTS) {
             Ok(r) => r,
             Err(e) => {
                 let _ = events.send(DaemonEvent::Error { message: e.to_string() });
@@ -544,8 +544,6 @@ impl Daemon {
                 "rollback" => Some(HotkeyAction::QuickRollback),
                 "panic-restore" => Some(HotkeyAction::PanicRestore),
                 "toggle-trainer" => Some(HotkeyAction::ToggleTrainer),
-                // Overlay toggles are consumed by the overlay process itself.
-                "toggle-overlay" => None,
                 other => {
                     let _ = events.send(DaemonEvent::Warning {
                         message: format!("unknown request `{other}`"),
@@ -559,6 +557,10 @@ impl Daemon {
         }
     }
 }
+
+/// Request actions served by the daemon (others, e.g. `toggle-overlay`, are
+/// left on the bus for their own consumer).
+pub const DAEMON_REQUESTS: &[&str] = &["snapshot", "rollback", "panic-restore", "toggle-trainer"];
 
 /// Marker: the file is not ready yet, try again later.
 #[derive(Debug)]
