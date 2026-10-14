@@ -258,7 +258,7 @@ fn build_save(ue5: Option<i32>) -> Vec<u8> {
     soft.s("/Game/Textures/T_Icon.T_Icon").s("");
     tag(&mut b, "Icon", "SoftObjectProperty", &[], &soft.0);
 
-    // TextProperty: kept raw.
+    // TextProperty: FText with a None history (culture-invariant string).
     let mut text = B::default();
     text.u32(0).u8(0xff).i32(1).s("Hello");
     tag(&mut b, "Greeting", "TextProperty", &[], &text.0);
@@ -329,7 +329,7 @@ fn ue4_save_round_trips_bit_for_bit() {
     assert_eq!(get(&r, "Npcs[1].value.Name"), Node::String("Alice".into()));
     assert_eq!(get(&r, "Weapon"), Node::String("/Game/Items/BP_Sword.BP_Sword_C".into()));
     assert_eq!(get(&r, "Icon.AssetPath"), Node::String("/Game/Textures/T_Icon.T_Icon".into()));
-    assert!(matches!(get(&r, "Greeting"), Node::Bytes(b) if !b.is_empty()));
+    assert_eq!(get(&r, "Greeting.CultureInvariantString"), Node::String("Hello".into()));
     let notes = &s.envelope().notes;
     assert!(notes.iter().any(|n| n.contains("UE 4.27.2 SaveGameVersion 2")), "{notes:?}");
     assert!(notes.iter().any(|n| n.contains("trailing")), "{notes:?}");

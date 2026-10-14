@@ -269,3 +269,11 @@ codec = "json"
 layers = ["LZString"]
 lossless = true
 edit = { path = "state.delta[0].variables.gold", value = 500 }
+
+[[save]]
+file = "kerbal-space-program/persistent.sfs"
+game = "Kerbal Space Program"
+app_id = 220200
+codec = "confignode"
+lossless = true
+edit = { path = "GAME.FLIGHTSTATE.UT", value = 100000.25 }

@@ -824,6 +824,11 @@ impl StructuralCodec for IniCodec {
             _ => {}
         }
         let lines = split_lines(text);
+        // Brace-delimited node formats (KSP ConfigNode) are not INI.
+        let brace_line = lines.iter().any(|l| matches!(l.text.trim_matches(is_ws), "{" | "}"));
+        if brace_line && text.matches('{').count() == text.matches('}').count() {
+            return 0;
+        }
         let mut meaningful = 0usize;
         let mut good = 0usize;
         let mut entries = 0usize;
@@ -968,6 +973,8 @@ mod tests {
         assert_eq!(c.detect(b"just some prose\nwithout any keys\n", &ctx), 0);
         assert_eq!(c.detect(&[0u8, 1, 2, 3, b'=', b'4'], &ctx), 0);
         assert_eq!(c.detect(b"[Only]\n", &ctx), 0);
+        assert_eq!(c.detect(b"GAME\n{\n\tfunds = 5\n}\n", &ctx), 0);
+        assert_eq!(c.detect(b"a = x\n{\nb = 2\n", &ctx), 60, "unbalanced braces are not a node format");
     }
 
     #[test]

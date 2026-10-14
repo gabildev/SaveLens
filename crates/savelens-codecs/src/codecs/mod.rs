@@ -1,5 +1,6 @@
 //! Structural codecs.
 
+pub mod confignode;
 pub mod container;
 pub mod gvas;
 pub mod ini;
@@ -27,6 +28,7 @@ pub fn builtin() -> Vec<Arc<dyn StructuralCodec>> {
         Arc::new(sqlite::SqliteCodec),
         Arc::new(nbt::NbtCodec),
         Arc::new(msgpack::MsgPackCodec),
+        Arc::new(confignode::ConfigNodeCodec),
         Arc::new(ini::IniCodec),
         Arc::new(xml::XmlCodec),
         Arc::new(plist::PlistCodec),

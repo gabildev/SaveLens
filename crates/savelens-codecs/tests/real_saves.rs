@@ -124,7 +124,7 @@ fn real_game_saves() {
     let manifest: Manifest =
         toml::from_str(&std::fs::read_to_string(root.join("manifest.toml")).expect("manifest.toml is readable"))
             .expect("manifest.toml is valid");
-    let corpus = std::env::var_os("SAVELENS_REAL_SAVES").map(PathBuf::from).unwrap_or_else(|| root.join("corpus"));
+    let corpus = std::env::var_os("SAVELENS_CORPUS").map(PathBuf::from).unwrap_or_else(|| root.join("corpus"));
     let required = std::env::var_os("SAVELENS_REQUIRE_REAL_SAVES").is_some();
     let missing: Vec<&str> =
         manifest.save.iter().filter(|e| !corpus.join(&e.file).is_file()).map(|e| e.file.as_str()).collect();

@@ -16,14 +16,24 @@
 //!
 //! **Losslessness**: every property value is parsed from exactly `Size`
 //! bytes and re-encoded immediately; if the parse does not consume the whole
-//! value, the type is unknown (`TextProperty`, delegates, field paths, …) or
-//! the re-encoded bytes differ, the value is kept as raw bytes
+//! value, the type is unknown or the re-encoded bytes differ, the value is
+//! kept as raw bytes
 //! ([`Node::Bytes`], same-length edits only). Sizes (including the inner
 //! struct-array tag size) are recomputed on encode, so string edits that
 //! change lengths produce a consistent file. Tag constructs that cannot be
 //! parsed with certainty make [`GvasCodec::decode`] fail with
 //! [`CodecError::Unsupported`], which lets the pipeline fall back to the raw
 //! codec.
+//!
+//! **Self-describing values** (`TextProperty` / `FText` with every history
+//! type up to `StringTableEntry`, `DelegateProperty`, multicast inline and
+//! sparse delegates, `FieldPathProperty` and the `GameplayTagContainer`
+//! struct) are decoded into a small record tree whose discriminants (history
+//! type, argument type, presence flags) are projected read-only. The `FText`
+//! flavour (culture-invariant flag of the `None` history, 64-bit integer
+//! format arguments) is taken from the custom versions in the header and, as
+//! everything else, accepted only when the value re-encodes bit for bit; the
+//! other flavours are tried as fall-backs.
 
 use std::collections::HashSet;
 
@@ -464,6 +474,322 @@ fn parse_guid(s: &str, path: &NodePath) -> CodecResult<[u8; 16]> {
 }
 
 // ---------------------------------------------------------------------------
+// Self-describing records (FText, delegates, field paths, tag containers)
+// ---------------------------------------------------------------------------
+
+/// A value with a fixed binary schema that is written as the pre-order
+/// concatenation of its fields. Used for values whose layout is decided
+/// while reading (the history type of an `FText`, presence flags, …).
+#[derive(Debug, Clone)]
+enum Rec {
+    /// An editable number.
+    Num(Scalar),
+    /// A discriminant or presence flag: it decides which fields follow, so
+    /// it is projected (with its symbolic name, if any) but cannot be edited.
+    Fixed(Scalar, Option<&'static str>),
+    /// An `FString` / `FName`.
+    Str(FStr),
+    /// Named fields in on-disk order.
+    Fields(Vec<(&'static str, Rec)>),
+    /// `i32` element count followed by the elements. `grow` lists hold plain
+    /// strings and accept added / removed elements.
+    List { grow: bool, items: Vec<Rec> },
+}
+
+impl Rec {
+    fn write(&self, out: &mut Vec<u8>) -> CodecResult<()> {
+        match self {
+            Rec::Num(s) | Rec::Fixed(s, _) => s.write(out),
+            Rec::Str(s) => s.write(out)?,
+            Rec::Fields(fields) => {
+                for (_, f) in fields {
+                    f.write(out)?;
+                }
+            }
+            Rec::List { items, .. } => {
+                out.put_i32_le(len_i32(items.len(), "list")?);
+                for i in items {
+                    i.write(out)?;
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn project(&self) -> Node {
+        match self {
+            Rec::Num(s) => s.to_node(),
+            Rec::Fixed(_, Some(label)) => Node::String((*label).to_string()),
+            Rec::Fixed(s, None) => s.to_node(),
+            Rec::Str(s) => Node::String(s.text.clone()),
+            Rec::Fields(fields) => Node::Map(fields.iter().map(|(k, v)| ((*k).to_string(), v.project())).collect()),
+            Rec::List { items, .. } => Node::Array(items.iter().map(Rec::project).collect()),
+        }
+    }
+
+    fn reconcile(&mut self, node: &Node, path: &NodePath) -> CodecResult<()> {
+        let current = self.project();
+        if bit_equal(&current, node) {
+            return Ok(());
+        }
+        match self {
+            Rec::Num(s) => *s = s.edited(node, path)?,
+            Rec::Fixed(..) => {
+                return Err(CodecError::structure(
+                    CODEC,
+                    path,
+                    "this field decides the layout of the value (history / argument type or presence flag) and cannot be edited",
+                ));
+            }
+            Rec::Str(s) => s.set_text(expect_str(node, path)?),
+            Rec::Fields(fields) => {
+                let Node::Map(m) = node else {
+                    return Err(CodecError::type_mismatch(CODEC, path, "map", node.kind().name()));
+                };
+                if m.len() != fields.len() || !fields.iter().zip(m.keys()).all(|((a, _), b)| a == b) {
+                    return Err(CodecError::structure(
+                        CODEC,
+                        path,
+                        "the fields of this value cannot be added, removed or renamed",
+                    ));
+                }
+                for ((k, f), child) in fields.iter_mut().zip(m.values()) {
+                    f.reconcile(child, &path.key(*k))?;
+                }
+            }
+            Rec::List { grow, items } => {
+                let Node::Array(a) = node else {
+                    return Err(CodecError::type_mismatch(CODEC, path, "array", node.kind().name()));
+                };
+                if a.len() != items.len() {
+                    if !*grow {
+                        return Err(CodecError::structure(
+                            CODEC,
+                            path,
+                            "elements of this list cannot be added or removed",
+                        ));
+                    }
+                    items.truncate(a.len());
+                    while items.len() < a.len() {
+                        items.push(Rec::Str(FStr::new("")));
+                    }
+                }
+                for (i, (item, child)) in items.iter_mut().zip(a).enumerate() {
+                    item.reconcile(child, &path.index(i))?;
+                }
+            }
+        }
+        Ok(())
+    }
+}
+
+/// Version-dependent details of the `FText` serialisation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct TextOpts {
+    /// `FEditorObjectVersion::CultureInvariantTextSerializationKeyStability`:
+    /// a `None` history carries `bHasCultureInvariantString` (+ the string).
+    none_flag: bool,
+    /// `FUE5ReleaseStreamObjectVersion::TextFormatArgumentData64bitSupport`:
+    /// integer format arguments are 64-bit.
+    int64_args: bool,
+}
+
+impl TextOpts {
+    /// Every variant, the preferred one first.
+    fn candidates(pref: TextOpts) -> [TextOpts; 4] {
+        let flip_none = TextOpts { none_flag: !pref.none_flag, ..pref };
+        let flip_int = TextOpts { int64_args: !pref.int64_args, ..pref };
+        let flip_both = TextOpts { none_flag: !pref.none_flag, int64_args: !pref.int64_args };
+        [pref, flip_none, flip_int, flip_both]
+    }
+}
+
+/// `FEditorObjectVersion` custom version GUID (as printed by [`guid_to_string`]).
+const EDITOR_OBJECT_VERSION: &str = "E4B068EDF49442E9A231DA0B2E46BB41";
+/// `FEditorObjectVersion::CultureInvariantTextSerializationKeyStability`.
+const CULTURE_INVARIANT_TEXT_KEY_STABILITY: i32 = 32;
+/// `FUE5ReleaseStreamObjectVersion` custom version GUID.
+const UE5_RELEASE_STREAM_OBJECT_VERSION: &str = "D89B5E4224BD4D468412ACA8DF641779";
+/// `FUE5ReleaseStreamObjectVersion::TextFormatArgumentData64bitSupport`.
+const TEXT_FORMAT_ARGUMENT_64BIT: i32 = 12;
+
+const HISTORY_NAMES: [&str; 13] = [
+    "None",
+    "Base",
+    "NamedFormat",
+    "OrderedFormat",
+    "ArgumentFormat",
+    "AsNumber",
+    "AsPercent",
+    "AsCurrency",
+    "AsDate",
+    "AsTime",
+    "AsDateTime",
+    "Transform",
+    "StringTableEntry",
+];
+
+const ARGUMENT_TYPE_NAMES: [&str; 5] = ["Int", "UInt", "Float", "Double", "Text"];
+
+/// Maximum nesting of `FText` values (format sources, text arguments).
+const MAX_TEXT_DEPTH: usize = 16;
+
+fn rec_str(r: &mut ByteReader<'_>, ctx: &str) -> CodecResult<Rec> {
+    Ok(Rec::Str(FStr::read(r, ctx)?))
+}
+
+fn rec_num(ty: ScalarTy, r: &mut ByteReader<'_>) -> CodecResult<Rec> {
+    Ok(Rec::Num(Scalar::read(ty, r)?))
+}
+
+/// Reads an `FText` (`u32` flags, `i8` history type, history payload).
+fn read_text(r: &mut ByteReader<'_>, opts: TextOpts, depth: usize) -> CodecResult<Rec> {
+    if depth > MAX_TEXT_DEPTH {
+        return Err(r.malformed("FText values are nested too deeply"));
+    }
+    let mut f: Vec<(&'static str, Rec)> = vec![("Flags", rec_num(ScalarTy::U32, r)?)];
+    let at = r.pos();
+    let history = r.i8("text history type")?;
+    let label = usize::try_from(i32::from(history) + 1).ok().and_then(|i| HISTORY_NAMES.get(i).copied());
+    let Some(label) = label else {
+        return Err(CodecError::malformed(CODEC, at, format!("unsupported FText history type {history}")));
+    };
+    f.push(("HistoryType", Rec::Fixed(Scalar::I8(history), Some(label))));
+    match history {
+        -1 => {
+            if opts.none_flag {
+                let has = r.u32_le("bHasCultureInvariantString")?;
+                f.push(("bHasCultureInvariantString", Rec::Fixed(Scalar::U32(has), None)));
+                if has != 0 {
+                    f.push(("CultureInvariantString", rec_str(r, "culture invariant string")?));
+                }
+            }
+        }
+        0 => {
+            f.push(("Namespace", rec_str(r, "text namespace")?));
+            f.push(("Key", rec_str(r, "text key")?));
+            f.push(("SourceString", rec_str(r, "text source string")?));
+        }
+        1..=3 => {
+            f.push(("SourceFormat", read_text(r, opts, depth + 1)?));
+            let count = read_count(r, "format argument count")?;
+            r.check_count(count, 1, "format arguments")?;
+            let mut items = Vec::with_capacity(count);
+            for _ in 0..count {
+                items.push(if history == 2 {
+                    read_format_arg(r, opts, depth)?
+                } else {
+                    Rec::Fields(vec![
+                        ("Name", rec_str(r, "format argument name")?),
+                        ("Value", read_format_arg(r, opts, depth)?),
+                    ])
+                });
+            }
+            f.push(("Arguments", Rec::List { grow: false, items }));
+        }
+        4..=6 => {
+            if history == 6 {
+                f.push(("CurrencyCode", rec_str(r, "currency code")?));
+            }
+            f.push(("SourceValue", read_format_arg(r, opts, depth)?));
+            let has = r.u32_le("bHasFormatOptions")?;
+            f.push(("bHasFormatOptions", Rec::Fixed(Scalar::U32(has), None)));
+            if has != 0 {
+                f.push((
+                    "FormatOptions",
+                    Rec::Fields(vec![
+                        ("AlwaysSign", rec_num(ScalarTy::U32, r)?),
+                        ("UseGrouping", rec_num(ScalarTy::U32, r)?),
+                        ("RoundingMode", rec_num(ScalarTy::I8, r)?),
+                        ("MinimumIntegralDigits", rec_num(ScalarTy::I32, r)?),
+                        ("MaximumIntegralDigits", rec_num(ScalarTy::I32, r)?),
+                        ("MinimumFractionalDigits", rec_num(ScalarTy::I32, r)?),
+                        ("MaximumFractionalDigits", rec_num(ScalarTy::I32, r)?),
+                    ]),
+                ));
+            }
+            f.push(("TargetCulture", rec_str(r, "target culture")?));
+        }
+        7..=9 => {
+            f.push(("Ticks", rec_num(ScalarTy::I64, r)?));
+            if history != 8 {
+                f.push(("DateStyle", rec_num(ScalarTy::I8, r)?));
+            }
+            if history != 7 {
+                f.push(("TimeStyle", rec_num(ScalarTy::I8, r)?));
+                f.push(("TimeZone", rec_str(r, "time zone")?));
+            }
+            f.push(("TargetCulture", rec_str(r, "target culture")?));
+        }
+        10 => {
+            f.push(("SourceText", read_text(r, opts, depth + 1)?));
+            f.push(("TransformType", rec_num(ScalarTy::U8, r)?));
+        }
+        _ => {
+            f.push(("TableId", rec_str(r, "string table id")?));
+            f.push(("Key", rec_str(r, "string table key")?));
+        }
+    }
+    Ok(Rec::Fields(f))
+}
+
+/// Reads an `FFormatArgumentValue` (`i8` type + typed value).
+fn read_format_arg(r: &mut ByteReader<'_>, opts: TextOpts, depth: usize) -> CodecResult<Rec> {
+    let at = r.pos();
+    let ty = r.i8("format argument type")?;
+    let label = usize::try_from(ty).ok().and_then(|i| ARGUMENT_TYPE_NAMES.get(i).copied());
+    let Some(label) = label else {
+        return Err(CodecError::malformed(CODEC, at, format!("unsupported format argument type {ty}")));
+    };
+    let value = match ty {
+        0 => rec_num(if opts.int64_args { ScalarTy::I64 } else { ScalarTy::I32 }, r)?,
+        1 => rec_num(if opts.int64_args { ScalarTy::U64 } else { ScalarTy::U32 }, r)?,
+        2 => rec_num(ScalarTy::F32, r)?,
+        3 => rec_num(ScalarTy::F64, r)?,
+        _ => read_text(r, opts, depth + 1)?,
+    };
+    Ok(Rec::Fields(vec![("Type", Rec::Fixed(Scalar::I8(ty), Some(label))), ("Value", value)]))
+}
+
+/// `FScriptDelegate`: object path + function name.
+fn read_delegate(r: &mut ByteReader<'_>) -> CodecResult<Rec> {
+    Ok(Rec::Fields(vec![
+        ("Object", rec_str(r, "delegate object")?),
+        ("FunctionName", rec_str(r, "delegate function name")?),
+    ]))
+}
+
+/// `FMulticastScriptDelegate`: `i32` count + delegates.
+fn read_multicast(r: &mut ByteReader<'_>) -> CodecResult<Rec> {
+    let count = read_count(r, "delegate count")?;
+    r.check_count(count, 8, "delegates")?;
+    let mut items = Vec::with_capacity(count);
+    for _ in 0..count {
+        items.push(read_delegate(r)?);
+    }
+    Ok(Rec::List { grow: false, items })
+}
+
+/// `i32` count + `FName`s (`GameplayTagContainer`, field path elements).
+fn read_name_list(r: &mut ByteReader<'_>, ctx: &str) -> CodecResult<Rec> {
+    let count = read_count(r, ctx)?;
+    r.check_count(count, 4, ctx)?;
+    let mut items = Vec::with_capacity(count);
+    for _ in 0..count {
+        items.push(rec_str(r, ctx)?);
+    }
+    Ok(Rec::List { grow: true, items })
+}
+
+/// `FFieldPath`: path of `FName`s + resolved owner object path.
+fn read_field_path(r: &mut ByteReader<'_>) -> CodecResult<Rec> {
+    Ok(Rec::Fields(vec![
+        ("Path", read_name_list(r, "field path")?),
+        ("ResolvedOwner", rec_str(r, "field path owner")?),
+    ]))
+}
+
+// ---------------------------------------------------------------------------
 // Document model
 // ---------------------------------------------------------------------------
 
@@ -478,6 +804,16 @@ enum ElemKind {
     Guid,
     /// A property list terminated by `None`.
     Props,
+    /// `FText` with the given version flavour.
+    Text(TextOpts),
+    /// `FScriptDelegate`.
+    Delegate,
+    /// `FMulticastScriptDelegate`.
+    Multicast,
+    /// `FFieldPath`.
+    FieldPath,
+    /// `i32` count + `FName`s (`GameplayTagContainer`).
+    NameList,
 }
 
 impl ElemKind {
@@ -488,6 +824,9 @@ impl ElemKind {
             ElemKind::StrSeq(n) => 4 * n,
             ElemKind::Bin(l) => l.size(),
             ElemKind::Guid => 16,
+            ElemKind::Text(_) => 5,
+            ElemKind::Delegate | ElemKind::FieldPath => 8,
+            ElemKind::Multicast | ElemKind::NameList => 4,
         }
     }
 }
@@ -503,6 +842,8 @@ enum Value {
     Array(Box<ArrayValue>),
     Set(Box<SetValue>),
     Map(Box<MapValue>),
+    /// A value with a schema decided while reading (`FText`, delegates, …).
+    Record(Box<Rec>),
     /// Unknown or unparseable value, kept verbatim.
     Raw(Vec<u8>),
 }
@@ -765,6 +1106,19 @@ impl Header {
         self.class_name.write(out)
     }
 
+    /// Version number of the custom version with the given GUID.
+    fn custom_version(&self, guid: &str) -> Option<i32> {
+        match &self.custom {
+            CustomVersions::Absent => None,
+            CustomVersions::Optimized { entries, .. } => {
+                entries.iter().find(|(g, _)| guid_to_string(g) == guid).map(|(_, v)| *v)
+            }
+            CustomVersions::Guids { entries, .. } => {
+                entries.iter().find(|(g, _, _)| guid_to_string(g) == guid).map(|(_, v, _)| *v)
+            }
+        }
+    }
+
     fn custom_count(&self) -> usize {
         match &self.custom {
             CustomVersions::Absent => 0,
@@ -791,6 +1145,8 @@ struct Fmt {
     tag_extension: bool,
     /// Large world coordinates: ambiguous vectors default to doubles.
     prefer_double: bool,
+    /// `FText` flavour announced by the custom versions (tried first).
+    text: TextOpts,
 }
 
 impl Fmt {
@@ -800,6 +1156,14 @@ impl Fmt {
             complete_tags: ue5 >= UE5_PROPERTY_TAG_COMPLETE_TYPE_NAME,
             tag_extension: (UE5_PROPERTY_TAG_EXTENSION..UE5_PROPERTY_TAG_COMPLETE_TYPE_NAME).contains(&ue5),
             prefer_double: ue5 >= UE5_LARGE_WORLD_COORDINATES,
+            text: TextOpts {
+                none_flag: h
+                    .custom_version(EDITOR_OBJECT_VERSION)
+                    .is_some_and(|v| v >= CULTURE_INVARIANT_TEXT_KEY_STABILITY),
+                int64_args: h
+                    .custom_version(UE5_RELEASE_STREAM_OBJECT_VERSION)
+                    .is_some_and(|v| v >= TEXT_FORMAT_ARGUMENT_64BIT),
+            },
         }
     }
 }
@@ -814,6 +1178,10 @@ enum TypeDesc {
     Str,
     SoftObject,
     Struct(Option<String>),
+    Text,
+    Delegate,
+    Multicast,
+    FieldPath,
     Array(Box<TypeDesc>),
     Set(Box<TypeDesc>),
     Map(Box<TypeDesc>, Box<TypeDesc>),
@@ -830,6 +1198,12 @@ fn simple_desc(name: &str) -> TypeDesc {
         }
         "SoftObjectProperty" | "SoftClassProperty" => TypeDesc::SoftObject,
         "StructProperty" => TypeDesc::Struct(None),
+        "TextProperty" => TypeDesc::Text,
+        "DelegateProperty" => TypeDesc::Delegate,
+        "MulticastDelegateProperty" | "MulticastInlineDelegateProperty" | "MulticastSparseDelegateProperty" => {
+            TypeDesc::Multicast
+        }
+        "FieldPathProperty" => TypeDesc::FieldPath,
         other => ScalarTy::from_property(other).map(TypeDesc::Scalar).unwrap_or(TypeDesc::Unknown),
     }
 }
@@ -887,6 +1261,9 @@ fn struct_candidates(name: Option<&str>, elem_size: Option<usize>, role: Role, f
             if n == "Guid" && elem_size.is_none_or(|s| s == 16) {
                 v.push(ElemKind::Guid);
             }
+            if n == "GameplayTagContainer" {
+                v.push(ElemKind::NameList);
+            }
             if matches!(n, "SoftObjectPath" | "SoftClassPath") {
                 v.push(ElemKind::StrSeq(2));
                 v.push(ElemKind::StrSeq(3));
@@ -910,6 +1287,10 @@ fn elem_candidates(desc: &TypeDesc, elem_size: Option<usize>, role: Role, fmt: F
         TypeDesc::Str => vec![ElemKind::Str],
         TypeDesc::SoftObject => vec![ElemKind::StrSeq(2), ElemKind::StrSeq(3)],
         TypeDesc::Struct(n) => struct_candidates(n.as_deref(), elem_size, role, fmt),
+        TypeDesc::Text => TextOpts::candidates(fmt.text).into_iter().map(ElemKind::Text).collect(),
+        TypeDesc::Delegate => vec![ElemKind::Delegate],
+        TypeDesc::Multicast => vec![ElemKind::Multicast],
+        TypeDesc::FieldPath => vec![ElemKind::FieldPath],
         TypeDesc::Array(_) | TypeDesc::Set(_) | TypeDesc::Map(..) | TypeDesc::Unknown => Vec::new(),
     }
 }
@@ -962,6 +1343,11 @@ fn read_elem(kind: ElemKind, r: &mut ByteReader<'_>, fmt: Fmt, depth: usize) -> 
         }
         ElemKind::Guid => Value::Guid(r.array::<16>("guid")?),
         ElemKind::Props => Value::Props(read_props(r, fmt, depth + 1)?),
+        ElemKind::Text(opts) => Value::Record(Box::new(read_text(r, opts, 0)?)),
+        ElemKind::Delegate => Value::Record(Box::new(read_delegate(r)?)),
+        ElemKind::Multicast => Value::Record(Box::new(read_multicast(r)?)),
+        ElemKind::FieldPath => Value::Record(Box::new(read_field_path(r)?)),
+        ElemKind::NameList => Value::Record(Box::new(read_name_list(r, "gameplay tags")?)),
     })
 }
 
@@ -1245,6 +1631,7 @@ fn encode_value(v: &Value, out: &mut Vec<u8>) -> CodecResult<()> {
                 encode_value(v, out)?;
             }
         }
+        Value::Record(rec) => rec.write(out)?,
         Value::Raw(b) => out.extend_from_slice(b),
     }
     Ok(())
@@ -1409,6 +1796,7 @@ fn project_value(v: &Value) -> Node {
                 .map(|(k, v)| Node::map_from([("key", project_value(k)), ("value", project_value(v))]))
                 .collect(),
         ),
+        Value::Record(rec) => rec.project(),
         Value::Raw(b) => Node::Bytes(b.clone()),
     }
 }
@@ -1479,6 +1867,18 @@ fn new_elem(kind: ElemKind, path: &NodePath) -> CodecResult<Value> {
         ElemKind::StrSeq(n) => Value::StrSeq(vec![FStr::new(""); n]),
         ElemKind::Bin(l) => Value::Bin(l, l.fields.iter().map(|f| Scalar::zero(f.ty)).collect()),
         ElemKind::Guid => Value::Guid([0; 16]),
+        ElemKind::Delegate => Value::Record(Box::new(Rec::Fields(vec![
+            ("Object", Rec::Str(FStr::new(""))),
+            ("FunctionName", Rec::Str(FStr::new(""))),
+        ]))),
+        ElemKind::NameList => Value::Record(Box::new(Rec::List { grow: true, items: Vec::new() })),
+        ElemKind::Text(_) | ElemKind::Multicast | ElemKind::FieldPath => {
+            return Err(CodecError::structure(
+                CODEC,
+                path,
+                "text, multicast delegate and field path elements cannot be added (their layout is not known in advance)",
+            ));
+        }
         ElemKind::Props => {
             return Err(CodecError::structure(
                 CODEC,
@@ -1544,6 +1944,7 @@ fn reconcile_value(v: &mut Value, node: &Node, path: &NodePath) -> CodecResult<(
         }
         Value::Guid(g) => *g = parse_guid(expect_str(node, path)?, path)?,
         Value::Props(pl) => reconcile_props(pl, node, path)?,
+        Value::Record(rec) => rec.reconcile(node, path)?,
         Value::Array(a) => {
             let kind = a.kind;
             reconcile_seq(&mut a.elems, kind, node, path)?;
@@ -2130,6 +2531,226 @@ mod tests {
         b.extend_from_slice(&nested(MAX_DEPTH + 10));
         let doc = decode(&b);
         assert!(count_raw(&Value::Props(doc.root.clone())) == 1, "the too-deep tail is kept raw");
+    }
+
+    /// Builds a classic `TextProperty` whose value is `text`.
+    fn text_prop(b: &mut Vec<u8>, name: &str, text: &[u8]) {
+        s(b, name);
+        s(b, "TextProperty");
+        b.extend_from_slice(&(text.len() as i32).to_le_bytes());
+        b.extend_from_slice(&0i32.to_le_bytes());
+        b.push(0);
+        b.extend_from_slice(text);
+    }
+
+    fn base_text(o: &mut Vec<u8>, ns: &str, key: &str, src: &str) {
+        o.extend_from_slice(&0u32.to_le_bytes());
+        o.push(0);
+        s(o, ns);
+        s(o, key);
+        s(o, src);
+    }
+
+    /// One text per history type (UE4 flavour: no culture-invariant flag
+    /// in the header custom versions, 32-bit integer arguments).
+    fn texts() -> Vec<(&'static str, Vec<u8>)> {
+        let mut v = Vec::new();
+        let mut t = Vec::new();
+        t.extend_from_slice(&2u32.to_le_bytes());
+        t.push(0xff);
+        t.extend_from_slice(&1u32.to_le_bytes());
+        s(&mut t, "Invariant");
+        v.push(("None", t));
+        let mut t = Vec::new();
+        base_text(&mut t, "NS", "K", "Hello");
+        v.push(("Base", t));
+        for (label, ty) in [("NamedFormat", 1u8), ("ArgumentFormat", 3)] {
+            let mut t = 0u32.to_le_bytes().to_vec();
+            t.push(ty);
+            base_text(&mut t, "", "F", "{Who} has {N} coins ({R})");
+            t.extend_from_slice(&3i32.to_le_bytes());
+            s(&mut t, "Who");
+            t.push(4);
+            base_text(&mut t, "", "W", "Bob");
+            s(&mut t, "N");
+            t.push(1);
+            t.extend_from_slice(&7u32.to_le_bytes());
+            s(&mut t, "R");
+            t.push(3);
+            t.extend_from_slice(&0.5f64.to_le_bytes());
+            v.push((label, t));
+        }
+        let mut t = 0u32.to_le_bytes().to_vec();
+        t.push(2);
+        base_text(&mut t, "", "F", "{0}/{1}");
+        t.extend_from_slice(&2i32.to_le_bytes());
+        t.push(0);
+        t.extend_from_slice(&(-3i32).to_le_bytes());
+        t.push(2);
+        t.extend_from_slice(&1.25f32.to_le_bytes());
+        v.push(("OrderedFormat", t));
+        for (label, ty) in [("AsNumber", 4u8), ("AsPercent", 5), ("AsCurrency", 6)] {
+            let mut t = 0u32.to_le_bytes().to_vec();
+            t.push(ty);
+            if ty == 6 {
+                s(&mut t, "EUR");
+            }
+            t.push(0);
+            t.extend_from_slice(&1234i32.to_le_bytes());
+            t.extend_from_slice(&1u32.to_le_bytes());
+            t.extend_from_slice(&0u32.to_le_bytes());
+            t.extend_from_slice(&1u32.to_le_bytes());
+            t.push(0);
+            for d in [1i32, 324, 0, 3] {
+                t.extend_from_slice(&d.to_le_bytes());
+            }
+            s(&mut t, "en-US");
+            v.push((label, t));
+        }
+        for (label, ty) in [("AsDate", 7u8), ("AsTime", 8), ("AsDateTime", 9)] {
+            let mut t = 0u32.to_le_bytes().to_vec();
+            t.push(ty);
+            t.extend_from_slice(&637_000_000_000_000_000i64.to_le_bytes());
+            t.push(2);
+            if ty == 9 {
+                t.push(3);
+            }
+            if ty != 7 {
+                s(&mut t, "UTC");
+            }
+            s(&mut t, "fr-FR");
+            v.push((label, t));
+        }
+        let mut t = 0u32.to_le_bytes().to_vec();
+        t.push(10);
+        base_text(&mut t, "", "T", "shout");
+        t.push(1);
+        v.push(("Transform", t));
+        let mut t = 0u32.to_le_bytes().to_vec();
+        t.push(11);
+        s(&mut t, "/Game/Strings/ST_Items");
+        s(&mut t, "Sword_Name");
+        v.push(("StringTableEntry", t));
+        v
+    }
+
+    #[test]
+    fn text_histories_round_trip_and_edit() {
+        let mut b = header(None);
+        let all = texts();
+        // A property called `None` would terminate the list.
+        let prop = |label: &str| if label == "None" { "Invariant".to_string() } else { label.to_string() };
+        for (label, t) in &all {
+            text_prop(&mut b, &prop(label), t);
+        }
+        s(&mut b, "None");
+        let mut doc = decode(&b);
+        assert_eq!(count_raw(&Value::Props(doc.root.clone())), 0);
+        let ast = doc.to_ast();
+        let get = |p: &str| ast.get(&NodePath::parse(p).unwrap()).cloned();
+        for (label, _) in &all {
+            assert_eq!(
+                get(&format!("{}.HistoryType", prop(label))),
+                Some(Node::String((*label).to_string())),
+                "{label}"
+            );
+        }
+        assert_eq!(get("Invariant.CultureInvariantString"), Some(Node::String("Invariant".into())));
+        assert_eq!(get("Base.SourceString"), Some(Node::String("Hello".into())));
+        assert_eq!(get("NamedFormat.Arguments[0].Value.Value.SourceString"), Some(Node::String("Bob".into())));
+        assert_eq!(get("NamedFormat.Arguments[1].Value.Type"), Some(Node::String("UInt".into())));
+        assert_eq!(get("NamedFormat.Arguments[1].Value.Value"), Some(Node::U32(7)));
+        assert_eq!(get("ArgumentFormat.Arguments[2].Value.Value"), Some(Node::F64(0.5)));
+        assert_eq!(get("OrderedFormat.Arguments[0].Value"), Some(Node::I32(-3)));
+        assert_eq!(get("AsCurrency.CurrencyCode"), Some(Node::String("EUR".into())));
+        assert_eq!(get("AsPercent.FormatOptions.MaximumIntegralDigits"), Some(Node::I32(324)));
+        assert_eq!(get("AsDateTime.TimeStyle"), Some(Node::I8(3)));
+        assert_eq!(get("AsTime.TimeZone"), Some(Node::String("UTC".into())));
+        assert_eq!(get("Transform.SourceText.SourceString"), Some(Node::String("shout".into())));
+        assert_eq!(get("StringTableEntry.Key"), Some(Node::String("Sword_Name".into())));
+
+        let mut edited = ast.clone();
+        for (path, v) in [
+            ("Base.SourceString", Node::String("Hello, longer world".into())),
+            ("OrderedFormat.Arguments[0].Value", Node::I32(42)),
+            ("AsNumber.SourceValue.Value", Node::I32(-1)),
+            ("AsDate.Ticks", Node::I64(1)),
+            ("StringTableEntry.TableId", Node::String("/Game/ST_Other".into())),
+        ] {
+            edited.set(&NodePath::parse(path).unwrap(), v, false).unwrap();
+        }
+        doc.apply_ast(&edited).unwrap();
+        let re = decode(&doc.serialize().unwrap());
+        assert!(bit_equal(&re.to_ast(), &edited));
+
+        // Discriminants and argument lists are fixed.
+        for (path, v) in [
+            ("Base.HistoryType", Node::String("None".into())),
+            ("Invariant.bHasCultureInvariantString", Node::U32(0)),
+            ("OrderedFormat.Arguments[0].Type", Node::String("Text".into())),
+        ] {
+            let mut bad = ast.clone();
+            bad.set(&NodePath::parse(path).unwrap(), v, false).unwrap();
+            assert!(matches!(doc.apply_ast(&bad), Err(CodecError::StructureUnsupported { .. })), "{path}");
+        }
+        let mut bad = ast.clone();
+        bad.remove(&NodePath::parse("OrderedFormat.Arguments[1]").unwrap()).unwrap();
+        assert!(doc.apply_ast(&bad).is_err());
+    }
+
+    #[test]
+    fn text_flavours_follow_the_custom_versions() {
+        // A UE5 header announcing the culture-invariant flag and 64-bit arguments.
+        let mut b = b"GVAS".to_vec();
+        b.extend_from_slice(&3i32.to_le_bytes());
+        b.extend_from_slice(&522i32.to_le_bytes());
+        b.extend_from_slice(&1009i32.to_le_bytes());
+        for v in [5u16, 3, 2] {
+            b.extend_from_slice(&v.to_le_bytes());
+        }
+        b.extend_from_slice(&1u32.to_le_bytes());
+        s(&mut b, "++UE5+Release-5.3");
+        b.extend_from_slice(&3i32.to_le_bytes());
+        b.extend_from_slice(&2i32.to_le_bytes());
+        for (guid, v) in [
+            ([0xE4B068EDu32, 0xF49442E9, 0xA231DA0B, 0x2E46BB41], 40i32),
+            ([0xD89B5E42, 0x24BD4D46, 0x8412ACA8, 0xDF641779], 20),
+        ] {
+            for part in guid {
+                b.extend_from_slice(&part.to_le_bytes());
+            }
+            b.extend_from_slice(&v.to_le_bytes());
+        }
+        s(&mut b, "/Script/Game.Save");
+        let mut t = 0u32.to_le_bytes().to_vec();
+        t.push(2);
+        t.extend_from_slice(&0u32.to_le_bytes());
+        t.push(0xff);
+        t.extend_from_slice(&0u32.to_le_bytes());
+        t.extend_from_slice(&1i32.to_le_bytes());
+        t.push(0);
+        t.extend_from_slice(&5_000_000_000i64.to_le_bytes());
+        text_prop(&mut b, "Big", &t);
+        s(&mut b, "None");
+        let doc = decode(&b);
+        assert!(doc.fmt.text.none_flag && doc.fmt.text.int64_args);
+        let ast = doc.to_ast();
+        assert_eq!(ast.get(&NodePath::parse("Big.Arguments[0].Value").unwrap()), Some(&Node::I64(5_000_000_000)));
+        assert_eq!(
+            ast.get(&NodePath::parse("Big.SourceFormat.bHasCultureInvariantString").unwrap()),
+            Some(&Node::U32(0))
+        );
+    }
+
+    #[test]
+    fn unknown_text_history_stays_raw() {
+        let mut b = header(None);
+        let mut t = 0u32.to_le_bytes().to_vec();
+        t.extend_from_slice(&[12, 1, 2, 3]);
+        text_prop(&mut b, "Gen", &t);
+        s(&mut b, "None");
+        let doc = decode(&b);
+        assert!(matches!(doc.to_ast().get(&NodePath::parse("Gen").unwrap()), Some(Node::Bytes(v)) if v.len() == 8));
     }
 
     #[test]
