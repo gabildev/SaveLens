@@ -329,6 +329,7 @@ pub fn collect_files(root: &Path, patterns: &[String]) -> Result<Vec<PathBuf>, D
 mod tests {
     use super::*;
 
+    #[cfg(unix)]
     fn linux_cfg(home: &Path) -> DiscoveryConfig {
         let mut cfg = DiscoveryConfig::for_home(home.to_path_buf());
         cfg.host = HostPlatform::Linux;
