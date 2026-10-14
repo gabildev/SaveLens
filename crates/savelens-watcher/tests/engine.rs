@@ -46,11 +46,7 @@ fn env_with(config: SaveLensConfig, pipeline: EnvelopePipeline) -> Env {
     fs::write(saves.join("options.ini"), b"[video]\nvsync=1\n").unwrap();
     let store = Store::open(tmp.path().join("data")).unwrap();
     let engine = Engine::new(store, pipeline, config);
-    Env {
-        saves: saves.canonicalize().unwrap(),
-        engine,
-        _tmp: tmp,
-    }
+    Env { saves: saves.canonicalize().unwrap(), engine, _tmp: tmp }
 }
 
 fn env() -> Env {
@@ -64,10 +60,7 @@ fn gold_path() -> NodePath {
 #[test]
 fn track_snapshot_edit_and_panic_restore() {
     let e = env();
-    let (game, import) = e
-        .engine
-        .track("Test RPG", Some(42), &e.saves, &["*.json".to_string()], "native")
-        .unwrap();
+    let (game, import) = e.engine.track("Test RPG", Some(42), &e.saves, &["*.json".to_string()], "native").unwrap();
     let import = import.expect("import commit");
     assert_eq!(import.kind, CommitKind::Import);
     assert_eq!(e.engine.tracked_files(&game).unwrap().len(), 1, "only *.json is tracked");
@@ -83,22 +76,12 @@ fn track_snapshot_edit_and_panic_restore() {
     assert!(logs[0].lines.iter().any(|l| l.contains("\"Active\" -> \"Completed\"")));
 
     // Alias shows up in later changelogs.
-    e.engine
-        .pin(game.id, "slot1.json", "Oro", &Location::Ast { path: gold_path() })
-        .unwrap();
+    e.engine.pin(game.id, "slot1.json", "Oro", &Location::Ast { path: gold_path() }).unwrap();
 
     // Edit gold on disk.
     let rep = e
         .engine
-        .edit_value(
-            game.id,
-            "slot1.json",
-            &EditTarget::Path {
-                path: gold_path(),
-                value: "99999".into(),
-            },
-            false,
-        )
+        .edit_value(game.id, "slot1.json", &EditTarget::Path { path: gold_path(), value: "99999".into() }, false)
         .unwrap();
     assert!(!rep.no_op);
     assert!(rep.safety_tag.as_deref().unwrap().starts_with("safety/pre-mutation-"));
@@ -158,10 +141,7 @@ fn surgical_cherry_pick_keeps_other_progress() {
         root.get(&NodePath::parse("Player.Inventory").unwrap()),
         Some(&Node::Array(vec![Node::String("Sword".into()), Node::String("Shield".into())]))
     );
-    assert_eq!(
-        root.get(&NodePath::parse("Quests.Main_02").unwrap()),
-        Some(&Node::String("Completed".into()))
-    );
+    assert_eq!(root.get(&NodePath::parse("Quests.Main_02").unwrap()), Some(&Node::String("Completed".into())));
     assert_eq!(e.engine.log(game.id, None, 1).unwrap()[0].kind, CommitKind::CherryPick);
 }
 
@@ -221,12 +201,7 @@ fn raw_binary_cheat_with_checksum_is_resigned() {
     file.extend_from_slice(&crc32fast::hash(&body).to_le_bytes());
     fs::write(e.saves.join("game.dat"), &file).unwrap();
     let (game, _) = e.engine.track("Bin", None, &e.saves, &["*.dat".to_string()], "native").unwrap();
-    let loc = Location::Raw {
-        region: NodePath::root(),
-        offset: 0x40,
-        ty: ScanType::U32,
-        endian: Endianness::Little,
-    };
+    let loc = Location::Raw { region: NodePath::root(), offset: 0x40, ty: ScanType::U32, endian: Endianness::Little };
     e.engine.pin(game.id, "game.dat", "Money", &loc).unwrap();
     e.engine.set_cheat(game.id, "Money", ScalarValue::Int(424_242)).unwrap();
     let out = fs::read(e.saves.join("game.dat")).unwrap();
@@ -297,17 +272,18 @@ fn safe_edit_gate_blocks_lossy_codecs() {
     assert_eq!(opened.edit_mode(), savelens_core::EditMode::RawInPlace);
     let err = e
         .engine
-        .edit_value(game.id, "a.lossy", &EditTarget::Path { path: NodePath::parse("text").unwrap(), value: "x".into() }, false)
+        .edit_value(
+            game.id,
+            "a.lossy",
+            &EditTarget::Path { path: NodePath::parse("text").unwrap(), value: "x".into() },
+            false,
+        )
         .unwrap_err();
     assert!(matches!(err, EngineError::GateBlocked(_)), "{err}");
     assert_eq!(fs::read(e.saves.join("a.lossy")).unwrap(), b"  hello 1234  \n", "file untouched");
     // Raw in-place mode is allowed and keeps every other byte.
-    let loc = Location::Raw {
-        region: NodePath::root(),
-        offset: 8,
-        ty: ScanType::AsciiDecimal,
-        endian: Endianness::Little,
-    };
+    let loc =
+        Location::Raw { region: NodePath::root(), offset: 8, ty: ScanType::AsciiDecimal, endian: Endianness::Little };
     e.engine
         .edit_value(game.id, "a.lossy", &EditTarget::Location { location: loc, value: ScalarValue::Int(9876) }, true)
         .unwrap();
@@ -338,20 +314,15 @@ fn daemon_auto_commits_trains_and_serves_requests() {
     let e = env_with(cfg, EnvelopePipeline::builtin());
     let (game, _) = e.engine.track("RPG", None, &e.saves, &["*.json".to_string()], "native").unwrap();
     let before = listing(&e.saves);
-    let handle = Daemon::spawn(
-        e.engine.clone(),
-        DaemonOptions {
-            hotkeys: false,
-            games: None,
-            tick: Duration::from_millis(20),
-        },
-    )
-    .unwrap();
+    let handle =
+        Daemon::spawn(e.engine.clone(), DaemonOptions { hotkeys: false, games: None, tick: Duration::from_millis(20) })
+            .unwrap();
     assert!(wait_for(&handle, |ev| matches!(ev, DaemonEvent::Watching { .. }), Duration::from_secs(5)).is_some());
 
     // The "game" saves.
     fs::write(e.saves.join("slot1.json"), save_json(2000, &["Sword", "Shield"], "Active")).unwrap();
-    let ev = wait_for(&handle, |ev| matches!(ev, DaemonEvent::Committed { .. }), Duration::from_secs(10)).expect("auto commit");
+    let ev = wait_for(&handle, |ev| matches!(ev, DaemonEvent::Committed { .. }), Duration::from_secs(10))
+        .expect("auto commit");
     if let DaemonEvent::Committed { summary, .. } = ev {
         assert!(summary.contains("+800 Gold"), "{summary}");
     }
@@ -361,7 +332,8 @@ fn daemon_auto_commits_trains_and_serves_requests() {
     e.engine.freeze(game.id, "Gold", Some(ScalarValue::Int(123_456)), true).unwrap();
     e.engine.store().set_trainer_enabled(game.id, true).unwrap();
     fs::write(e.saves.join("slot1.json"), save_json(5, &["Sword", "Shield"], "Active")).unwrap();
-    let ev = wait_for(&handle, |ev| matches!(ev, DaemonEvent::TrainerApplied { .. }), Duration::from_secs(10)).expect("trainer");
+    let ev = wait_for(&handle, |ev| matches!(ev, DaemonEvent::TrainerApplied { .. }), Duration::from_secs(10))
+        .expect("trainer");
     if let DaemonEvent::TrainerApplied { applied, .. } = ev {
         assert_eq!(applied, vec!["Gold".to_string()]);
     }
@@ -369,10 +341,7 @@ fn daemon_auto_commits_trains_and_serves_requests() {
     assert_eq!(root.get(&gold_path()), Some(&Node::I64(123_456)));
 
     // Panic restore requested by another process (overlay / CLI) through the store.
-    e.engine
-        .store()
-        .push_request("panic-restore", &serde_json::json!({ "game": game.id }))
-        .unwrap();
+    e.engine.store().push_request("panic-restore", &serde_json::json!({ "game": game.id })).unwrap();
     assert!(wait_for(&handle, |ev| matches!(ev, DaemonEvent::PanicRestored { .. }), Duration::from_secs(10)).is_some());
     let root = e.engine.root_at(game.id, WORKING, "slot1.json").unwrap();
     assert_eq!(root.get(&gold_path()), Some(&Node::I64(5)), "back to the game's own save");
@@ -396,15 +365,9 @@ fn daemon_waits_while_the_game_holds_the_file_open_for_writing() {
     };
     let e = env_with(cfg, EnvelopePipeline::builtin());
     let (_game, _) = e.engine.track("RPG", None, &e.saves, &["*.json".to_string()], "native").unwrap();
-    let handle = Daemon::spawn(
-        e.engine.clone(),
-        DaemonOptions {
-            hotkeys: false,
-            games: None,
-            tick: Duration::from_millis(20),
-        },
-    )
-    .unwrap();
+    let handle =
+        Daemon::spawn(e.engine.clone(), DaemonOptions { hotkeys: false, games: None, tick: Duration::from_millis(20) })
+            .unwrap();
     assert!(wait_for(&handle, |ev| matches!(ev, DaemonEvent::Watching { .. }), Duration::from_secs(5)).is_some());
     // Simulate a game that keeps the save open while writing it in two steps.
     let path = e.saves.join("slot1.json");
@@ -415,7 +378,8 @@ fn daemon_waits_while_the_game_holds_the_file_open_for_writing() {
     assert!(wait_for(&handle, |ev| matches!(ev, DaemonEvent::Committed { .. }), Duration::from_millis(1500)).is_none());
     f.write_all(b"3}}").unwrap();
     drop(f);
-    let ev = wait_for(&handle, |ev| matches!(ev, DaemonEvent::Committed { .. }), Duration::from_secs(10)).expect("commit after close");
+    let ev = wait_for(&handle, |ev| matches!(ev, DaemonEvent::Committed { .. }), Duration::from_secs(10))
+        .expect("commit after close");
     if let DaemonEvent::Committed { rel_path, .. } = ev {
         assert_eq!(rel_path, "slot1.json");
     }

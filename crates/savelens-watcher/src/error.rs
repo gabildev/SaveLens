@@ -55,10 +55,7 @@ pub enum EngineError {
 
 impl EngineError {
     pub(crate) fn io(path: impl Into<PathBuf>, source: std::io::Error) -> Self {
-        EngineError::Io {
-            path: path.into(),
-            source,
-        }
+        EngineError::Io { path: path.into(), source }
     }
 }
 

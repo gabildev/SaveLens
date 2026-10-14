@@ -20,7 +20,9 @@ use std::collections::HashSet;
 use savelens_core::node::{format_float, parse_numeric_string, NumericStringStyle};
 use savelens_core::{bit_equal, Node, NodeMap, NodePath, PathSeg, ScalarValue};
 
-use crate::document::{apply_via_diff, coerce_like, Capabilities, Confidence, DetectContext, Document, PathEditable, StructuralCodec};
+use crate::document::{
+    apply_via_diff, coerce_like, Capabilities, Confidence, DetectContext, Document, PathEditable, StructuralCodec,
+};
 use crate::error::{CodecError, CodecResult};
 
 const CODEC: &str = "ini";
@@ -66,9 +68,7 @@ pub(crate) fn render_float(old_raw: &str, x: f64) -> Option<String> {
     candidates.push(format_float(x));
     candidates.push(format!("{x}"));
     candidates.push(format!("{x:e}"));
-    candidates
-        .into_iter()
-        .find(|c| c.parse::<f64>().ok() == Some(x) && matches!(classify_scalar(c), Node::F64(_)))
+    candidates.into_iter().find(|c| c.parse::<f64>().ok() == Some(x) && matches!(classify_scalar(c), Node::F64(_)))
 }
 
 /// Renders a typed scalar as text, keeping the boolean letter case and the
@@ -113,7 +113,13 @@ pub(crate) fn render_scalar(old_raw: &str, value: &Node) -> Option<String> {
 /// * `typed == false`: the slot is always a string (quoted INI values, XML
 ///   attributes, plist strings). Numeric edits keep the numeric-string style
 ///   of the existing value.
-pub(crate) fn normalize_scalar(codec: &'static str, path: &NodePath, existing: &Node, edit: &Node, typed: bool) -> CodecResult<Node> {
+pub(crate) fn normalize_scalar(
+    codec: &'static str,
+    path: &NodePath,
+    existing: &Node,
+    edit: &Node,
+    typed: bool,
+) -> CodecResult<Node> {
     match edit {
         Node::Map(_) | Node::Array(_) => {
             return Err(CodecError::structure(codec, path, "a scalar value cannot be replaced by a container"));
@@ -145,9 +151,11 @@ pub(crate) fn normalize_scalar(codec: &'static str, path: &NodePath, existing: &
         Node::U8(x) => Node::I64(x as i64),
         Node::U16(x) => Node::I64(x as i64),
         Node::U32(x) => Node::I64(x as i64),
-        Node::U64(x) => Node::I64(
-            i64::try_from(x).map_err(|_| CodecError::unencodable(codec, path, format!("{x} does not fit a signed 64-bit integer")))?,
-        ),
+        Node::U64(x) => {
+            Node::I64(i64::try_from(x).map_err(|_| {
+                CodecError::unencodable(codec, path, format!("{x} does not fit a signed 64-bit integer"))
+            })?)
+        }
         Node::F32(x) => Node::F64(x as f64),
         other => other,
     })
@@ -158,11 +166,15 @@ pub(crate) fn normalize_scalar(codec: &'static str, path: &NodePath, existing: &
 /// is irrelevant.
 pub(crate) fn semantic_eq(a: &Node, b: &Node) -> bool {
     match (a, b) {
-        (Node::Map(x), Node::Map(y)) => x.len() == y.len() && x.iter().all(|(k, v)| y.get(k).is_some_and(|w| semantic_eq(v, w))),
+        (Node::Map(x), Node::Map(y)) => {
+            x.len() == y.len() && x.iter().all(|(k, v)| y.get(k).is_some_and(|w| semantic_eq(v, w)))
+        }
         (Node::Array(x), Node::Array(y)) => x.len() == y.len() && x.iter().zip(y).all(|(v, w)| semantic_eq(v, w)),
         _ => match (a.as_scalar(), b.as_scalar()) {
             (Some(ScalarValue::Int(x)), Some(ScalarValue::Int(y))) => x == y,
-            (Some(ScalarValue::Float(x)), Some(ScalarValue::Float(y))) => x.to_bits() == y.to_bits() || (x.is_nan() && y.is_nan()),
+            (Some(ScalarValue::Float(x)), Some(ScalarValue::Float(y))) => {
+                x.to_bits() == y.to_bits() || (x.is_nan() && y.is_nan())
+            }
             (Some(_), Some(_)) => false,
             _ => bit_equal(a, b),
         },
@@ -326,14 +338,7 @@ fn classify_line(text: &str) -> Kind {
     }
     let raw_end = inline_comment(text, value_start).unwrap_or(text.len());
     let value_end = value_start + text[value_start..raw_end].trim_end_matches(is_ws).len();
-    Kind::Entry(Entry {
-        key: key.to_string(),
-        key_start,
-        key_end,
-        value_start,
-        value_end,
-        quoted: false,
-    })
+    Kind::Entry(Entry { key: key.to_string(), key_start, key_end, value_start, value_end, quoted: false })
 }
 
 fn split_lines(text: &str) -> Vec<Line> {
@@ -394,12 +399,10 @@ impl IniDocument {
             Some(rest) => (true, rest),
             None => (false, bytes),
         };
-        let text = std::str::from_utf8(body)
-            .map_err(|e| CodecError::malformed(CODEC, e.valid_up_to() + if bom { 3 } else { 0 }, "INI text is not valid UTF-8"))?;
-        Ok(IniDocument {
-            bom,
-            lines: split_lines(text),
-        })
+        let text = std::str::from_utf8(body).map_err(|e| {
+            CodecError::malformed(CODEC, e.valid_up_to() + if bom { 3 } else { 0 }, "INI text is not valid UTF-8")
+        })?;
+        Ok(IniDocument { bom, lines: split_lines(text) })
     }
 
     /// Serialises the document.
@@ -509,11 +512,18 @@ impl IniDocument {
 
     /// Renders a value token for an entry line, verifying that the resulting
     /// line reads back as `target`.
-    fn render_token(path: &NodePath, line_text: &str, entry: &Entry, quoted: bool, target: &Node) -> CodecResult<String> {
+    fn render_token(
+        path: &NodePath,
+        line_text: &str,
+        entry: &Entry,
+        quoted: bool,
+        target: &Node,
+    ) -> CodecResult<String> {
         let old_tok = &line_text[entry.value_start..entry.value_end];
         let old_content = if entry.quoted { &old_tok[1..old_tok.len() - 1] } else { old_tok };
-        let text = render_scalar(old_content, target)
-            .ok_or_else(|| CodecError::unencodable(CODEC, path, format!("{} values cannot be written to INI", target.kind().name())))?;
+        let text = render_scalar(old_content, target).ok_or_else(|| {
+            CodecError::unencodable(CODEC, path, format!("{} values cannot be written to INI", target.kind().name()))
+        })?;
         if text.contains(['\n', '\r']) {
             return Err(CodecError::unencodable(CODEC, path, "INI values cannot contain line breaks"));
         }
@@ -523,13 +533,18 @@ impl IniDocument {
         let tok = if quoted { format!("\"{text}\"") } else { text };
         let candidate = format!("{}{}{}", &line_text[..entry.value_start], tok, &line_text[entry.value_end..]);
         let reread = Line::new(candidate, String::new());
-        let ok = reread.entry().is_some_and(|e| e.key == entry.key) && reread.value_node().is_some_and(|v| semantic_eq(&v, target));
+        let ok = reread.entry().is_some_and(|e| e.key == entry.key)
+            && reread.value_node().is_some_and(|v| semantic_eq(&v, target));
         if !ok {
             let got = reread.value_node().map(|v| v.preview(40)).unwrap_or_else(|| "an unparsable line".into());
             return Err(CodecError::unencodable(
                 CODEC,
                 path,
-                format!("`{}` would be read back as {got} in this {} value", tok, if quoted { "quoted" } else { "unquoted" }),
+                format!(
+                    "`{}` would be read back as {got} in this {} value",
+                    tok,
+                    if quoted { "quoted" } else { "unquoted" }
+                ),
             ));
         }
         Ok(tok)
@@ -548,12 +563,11 @@ impl IniDocument {
         if value.is_container() {
             return Err(CodecError::structure(CODEC, path, "INI entries hold scalar values only"));
         }
-        let (indent, sep, template_quoted) = match template.and_then(|i| self.lines.get(i)).and_then(|l| l.entry().map(|e| (l, e))) {
-            Some((l, e)) => (
-                l.text[..e.key_start].to_string(),
-                l.text[e.key_end..e.value_start].to_string(),
-                e.quoted,
-            ),
+        let (indent, sep, template_quoted) = match template
+            .and_then(|i| self.lines.get(i))
+            .and_then(|l| l.entry().map(|e| (l, e)))
+        {
+            Some((l, e)) => (l.text[..e.key_start].to_string(), l.text[e.key_end..e.value_start].to_string(), e.quoted),
             None => (String::new(), "=".to_string(), false),
         };
         let target = normalize_scalar(CODEC, path, &classify_scalar(""), value, true)?;
@@ -569,7 +583,9 @@ impl IniDocument {
         let want_quotes = template_quoted && matches!(target, Node::String(_));
         let tok = match Self::render_token(path, &prefix, &base, want_quotes, &target) {
             Ok(t) => t,
-            Err(_) if !want_quotes && matches!(target, Node::String(_)) => Self::render_token(path, &prefix, &base, true, &target)?,
+            Err(_) if !want_quotes && matches!(target, Node::String(_)) => {
+                Self::render_token(path, &prefix, &base, true, &target)?
+            }
             Err(e) => return Err(e),
         };
         Ok(format!("{prefix}{tok}"))
@@ -621,10 +637,7 @@ impl PathEditable for IniDocument {
     fn set_value(&mut self, path: &NodePath, value: &Node) -> CodecResult<()> {
         let idx = self.locate_entry(path)?;
         let line = &self.lines[idx];
-        let entry = line
-            .entry()
-            .cloned()
-            .ok_or_else(|| CodecError::path_not_found(CODEC, path))?;
+        let entry = line.entry().cloned().ok_or_else(|| CodecError::path_not_found(CODEC, path))?;
         let existing = line.value_node().ok_or_else(|| CodecError::path_not_found(CODEC, path))?;
         let target = normalize_scalar(CODEC, path, &existing, value, !entry.quoted)?;
         let tok = Self::render_token(path, &line.text, &entry, entry.quoted, &target)?;
@@ -640,7 +653,11 @@ impl PathEditable for IniDocument {
             [PathSeg::Key(name)] => match value {
                 Node::Map(entries) => {
                     if name.is_empty() || name != name.trim_matches(is_ws) || name.contains([']', '[', '\n', '\r']) {
-                        return Err(CodecError::unencodable(CODEC, path, format!("`{name}` is not a valid section name")));
+                        return Err(CodecError::unencodable(
+                            CODEC,
+                            path,
+                            format!("`{name}` is not a valid section name"),
+                        ));
                     }
                     let template = layout
                         .sections
@@ -649,10 +666,8 @@ impl PathEditable for IniDocument {
                         .find_map(|s| s.entries.last().map(|(_, i)| *i))
                         .or_else(|| layout.globals.last().map(|(_, i)| *i));
                     let mut texts = Vec::with_capacity(entries.len() + 2);
-                    let blank_before = layout
-                        .sections
-                        .iter()
-                        .any(|s| s.header > 0 && self.lines[s.header - 1].kind == Kind::Blank);
+                    let blank_before =
+                        layout.sections.iter().any(|s| s.header > 0 && self.lines[s.header - 1].kind == Kind::Blank);
                     if blank_before && self.lines.last().is_some_and(|l| l.kind != Kind::Blank) {
                         texts.push(String::new());
                     }
@@ -667,7 +682,8 @@ impl PathEditable for IniDocument {
                 Node::Array(_) => Err(CodecError::structure(CODEC, path, "INI has no arrays")),
                 scalar => {
                     let template = layout.globals.last().map(|(_, i)| *i);
-                    let line = self.new_entry_line(path, template.or_else(|| first_entry(&self.lines)), name, scalar)?;
+                    let line =
+                        self.new_entry_line(path, template.or_else(|| first_entry(&self.lines)), name, scalar)?;
                     let after = match (template, layout.sections.first()) {
                         (Some(i), _) => Some(i),
                         (None, Some(s)) => s.header.checked_sub(1),
@@ -764,11 +780,7 @@ impl Document for IniDocument {
             n.push("no final newline".into());
         }
         let layout = self.layout();
-        n.push(format!(
-            "{} section(s), {} global key(s)",
-            layout.sections.len(),
-            layout.globals.len()
-        ));
+        n.push(format!("{} section(s), {} global key(s)", layout.sections.len(), layout.globals.len()));
         let opaque = self.lines.iter().filter(|l| l.kind == Kind::Opaque).count();
         if opaque > 0 {
             n.push(format!("{opaque} unrecognised line(s) kept verbatim"));

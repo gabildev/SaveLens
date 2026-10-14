@@ -255,11 +255,7 @@ impl<'a> Parser<'a> {
         loop {
             let value = self.value()?;
             let ws_after = self.ws();
-            items.push(Item {
-                ws_before,
-                value,
-                ws_after,
-            });
+            items.push(Item { ws_before, value, ws_after });
             match self.peek() {
                 Some(b',') => {
                     self.pos += 1;
@@ -273,10 +269,7 @@ impl<'a> Parser<'a> {
             }
         }
         self.depth -= 1;
-        Ok(JVal::Arr {
-            items,
-            empty_ws: String::new(),
-        })
+        Ok(JVal::Arr { items, empty_ws: String::new() })
     }
 
     fn object(&mut self) -> CodecResult<JVal> {
@@ -287,10 +280,7 @@ impl<'a> Parser<'a> {
         if self.peek() == Some(b'}') {
             self.pos += 1;
             self.depth -= 1;
-            return Ok(JVal::Obj {
-                members,
-                empty_ws: first_ws,
-            });
+            return Ok(JVal::Obj { members, empty_ws: first_ws });
         }
         let mut ws_before_key = first_ws;
         loop {
@@ -303,14 +293,7 @@ impl<'a> Parser<'a> {
             let ws_after_colon = self.ws();
             let value = self.value()?;
             let ws_after_value = self.ws();
-            members.push(Member {
-                ws_before_key,
-                key,
-                ws_before_colon,
-                ws_after_colon,
-                value,
-                ws_after_value,
-            });
+            members.push(Member { ws_before_key, key, ws_before_colon, ws_after_colon, value, ws_after_value });
             match self.peek() {
                 Some(b',') => {
                     self.pos += 1;
@@ -324,10 +307,7 @@ impl<'a> Parser<'a> {
             }
         }
         self.depth -= 1;
-        Ok(JVal::Obj {
-            members,
-            empty_ws: String::new(),
-        })
+        Ok(JVal::Obj { members, empty_ws: String::new() })
     }
 }
 
@@ -495,11 +475,7 @@ impl JsonDoc {
             Some(rest) => (true, rest),
             None => (false, src),
         };
-        let mut p = Parser {
-            src: body,
-            pos: 0,
-            depth: 0,
-        };
+        let mut p = Parser { src: body, pos: 0, depth: 0 };
         let lead = p.ws();
         let mut root = p.value()?;
         let trail = p.ws();
@@ -515,14 +491,7 @@ impl JsonDoc {
             colon_ws: scan.colon.unwrap_or_default(),
         };
         expand_nested(&mut root, &style, 0);
-        Ok(JsonDoc {
-            bom,
-            lead,
-            root,
-            trail,
-            garbage,
-            style,
-        })
+        Ok(JsonDoc { bom, lead, root, trail, garbage, style })
     }
 
     /// Detected style.
@@ -568,7 +537,8 @@ fn encode_nested(nested: &Nested, outer: &JsonStyle) -> CodecResult<String> {
     let text = nested_payload(nested)?;
     Ok(match &nested.kind {
         NestedKind::Json => {
-            let s = String::from_utf8(text).map_err(|_| CodecError::unencodable(CODEC, "nested", "nested JSON is not UTF-8"))?;
+            let s = String::from_utf8(text)
+                .map_err(|_| CodecError::unencodable(CODEC, "nested", "nested JSON is not UTF-8"))?;
             escape(&s, outer)
         }
         NestedKind::Base64Json(v) => b64_engine(*v).encode(&text),
@@ -594,10 +564,7 @@ fn try_nested(st: &JStr, outer: &JsonStyle, depth: usize) -> Option<Nested> {
     if looks_like_json_text(&st.value) {
         if let Ok(doc) = JsonDoc::parse(st.value.as_bytes()) {
             if doc.garbage.is_empty() && matches!(doc.root, JVal::Obj { .. } | JVal::Arr { .. }) {
-                let n = Nested {
-                    kind: NestedKind::Json,
-                    doc: Box::new(doc),
-                };
+                let n = Nested { kind: NestedKind::Json, doc: Box::new(doc) };
                 if encode_nested(&n, outer).ok().as_deref() == Some(st.raw.as_str()) {
                     return Some(n);
                 }
@@ -797,7 +764,9 @@ fn render_number(node: &Node, path: &NodePath) -> CodecResult<String> {
         Node::U64(v) => v.to_string(),
         Node::F32(v) if v.is_finite() => format!("{v:?}"),
         Node::F64(v) if v.is_finite() => format!("{v:?}"),
-        Node::F32(_) | Node::F64(_) => return Err(CodecError::unencodable(CODEC, path, "JSON cannot represent NaN or infinity")),
+        Node::F32(_) | Node::F64(_) => {
+            return Err(CodecError::unencodable(CODEC, path, "JSON cannot represent NaN or infinity"))
+        }
         other => return Err(CodecError::type_mismatch(CODEC, path, "number", other.kind().name())),
     })
 }
@@ -808,10 +777,7 @@ struct Ctx<'s> {
 
 impl Ctx<'_> {
     fn indent(&self, level: usize) -> Option<String> {
-        self.style
-            .indent
-            .as_ref()
-            .map(|unit| format!("{}{}", self.style.newline, unit.repeat(level)))
+        self.style.indent.as_ref().map(|unit| format!("{}{}", self.style.newline, unit.repeat(level)))
     }
 
     /// Builds a fresh CST value for a node.
@@ -819,20 +785,14 @@ impl Ctx<'_> {
         Ok(match node {
             Node::Null => JVal::Null,
             Node::Bool(b) => JVal::Bool(*b),
-            Node::String(s) => JVal::Str(JStr {
-                raw: escape(s, self.style),
-                value: s.clone(),
-                nested: None,
-            }),
+            Node::String(s) => JVal::Str(JStr { raw: escape(s, self.style), value: s.clone(), nested: None }),
             Node::Bytes(b) => {
                 let s = base64::engine::general_purpose::STANDARD.encode(b);
-                JVal::Str(JStr {
-                    raw: s.clone(),
-                    value: s,
-                    nested: None,
-                })
+                JVal::Str(JStr { raw: s.clone(), value: s, nested: None })
             }
-            Node::RawRegion(_) => return Err(CodecError::unencodable(CODEC, path, "raw regions cannot be stored in JSON")),
+            Node::RawRegion(_) => {
+                return Err(CodecError::unencodable(CODEC, path, "raw regions cannot be stored in JSON"))
+            }
             Node::Array(items) => {
                 let inner = self.indent(level + 1).unwrap_or_default();
                 let mut out = Vec::with_capacity(items.len());
@@ -846,10 +806,7 @@ impl Ctx<'_> {
                 if let Some(last) = out.last_mut() {
                     last.ws_after = self.indent(level).unwrap_or_default();
                 }
-                JVal::Arr {
-                    items: out,
-                    empty_ws: String::new(),
-                }
+                JVal::Arr { items: out, empty_ws: String::new() }
             }
             Node::Map(m) => {
                 let inner = self.indent(level + 1).unwrap_or_default();
@@ -857,11 +814,7 @@ impl Ctx<'_> {
                 for (k, v) in m {
                     out.push(Member {
                         ws_before_key: inner.clone(),
-                        key: JStr {
-                            raw: escape(k, self.style),
-                            value: k.clone(),
-                            nested: None,
-                        },
+                        key: JStr { raw: escape(k, self.style), value: k.clone(), nested: None },
                         ws_before_colon: String::new(),
                         ws_after_colon: self.style.colon_ws.clone(),
                         value: self.render(v, level + 1, &path.key(k.clone()))?,
@@ -871,10 +824,7 @@ impl Ctx<'_> {
                 if let Some(last) = out.last_mut() {
                     last.ws_after_value = self.indent(level).unwrap_or_default();
                 }
-                JVal::Obj {
-                    members: out,
-                    empty_ws: String::new(),
-                }
+                JVal::Obj { members: out, empty_ws: String::new() }
             }
             n => JVal::Num(render_number(n, path)?),
         })
@@ -919,7 +869,9 @@ impl Ctx<'_> {
                         None => {
                             let value = self.render(child, level + 1, path)?;
                             let (wb, wbc, wac) = match &template {
-                                Some(t) => (t.ws_before_key.clone(), t.ws_before_colon.clone(), t.ws_after_colon.clone()),
+                                Some(t) => {
+                                    (t.ws_before_key.clone(), t.ws_before_colon.clone(), t.ws_after_colon.clone())
+                                }
                                 None => (
                                     self.indent(level + 1).unwrap_or_default(),
                                     String::new(),
@@ -929,11 +881,7 @@ impl Ctx<'_> {
                             // A de-duplicated AST key (`k#2`) maps back to the plain key text.
                             new_members.push(Member {
                                 ws_before_key: wb,
-                                key: JStr {
-                                    raw: escape(k, self.style),
-                                    value: k.clone(),
-                                    nested: None,
-                                },
+                                key: JStr { raw: escape(k, self.style), value: k.clone(), nested: None },
                                 ws_before_colon: wbc,
                                 ws_after_colon: wac,
                                 value,
@@ -1158,7 +1106,9 @@ mod tests {
 
     #[test]
     fn projection_types() {
-        let doc = JsonDocument::parse(br#"{"i":5,"big":18446744073709551615,"f":1.5,"s":"x","n":null,"dup":1,"dup":2}"#).unwrap();
+        let doc =
+            JsonDocument::parse(br#"{"i":5,"big":18446744073709551615,"f":1.5,"s":"x","n":null,"dup":1,"dup":2}"#)
+                .unwrap();
         let ast = doc.to_ast();
         let get = |p: &str| ast.get(&NodePath::parse(p).unwrap()).cloned().unwrap();
         assert_eq!(get("i"), Node::I64(5));
@@ -1193,10 +1143,7 @@ mod tests {
         }
         doc.apply_ast(&ast).unwrap();
         let out = String::from_utf8(doc.encode().unwrap()).unwrap();
-        assert_eq!(
-            out,
-            "{\n  \"a\": 1,\n  \"b\": [\n    1,\n    2,\n    3\n  ],\n  \"c\": {\n    \"x\": true\n  }\n}"
-        );
+        assert_eq!(out, "{\n  \"a\": 1,\n  \"b\": [\n    1,\n    2,\n    3\n  ],\n  \"c\": {\n    \"x\": true\n  }\n}");
         // And removal.
         let mut ast = doc.to_ast();
         ast.remove(&NodePath::parse("c").unwrap()).unwrap();

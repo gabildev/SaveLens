@@ -24,9 +24,8 @@ pub const MAX_GOLD: &str = "Max gold";
 pub const MAX_GOLD_VALUE: i128 = 999_999;
 
 /// Aliases recognised as currency by the built-in preset.
-const GOLD_WORDS: &[&str] = &[
-    "gold", "oro", "money", "dinero", "coin", "coins", "cash", "credits", "gil", "rupees", "souls", "zeny", "geld",
-];
+const GOLD_WORDS: &[&str] =
+    &["gold", "oro", "money", "dinero", "coin", "coins", "cash", "credits", "gil", "rupees", "souls", "zeny", "geld"];
 
 /// One variable of a preset.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -74,10 +73,7 @@ struct PresetFile {
 
 impl Default for PresetFile {
     fn default() -> Self {
-        PresetFile {
-            version: 1,
-            games: BTreeMap::new(),
-        }
+        PresetFile { version: 1, games: BTreeMap::new() }
     }
 }
 
@@ -93,10 +89,7 @@ pub struct PresetStore {
 /// True when `alias` names a currency.
 pub fn is_currency_alias(alias: &str) -> bool {
     let lower = alias.to_lowercase();
-    lower
-        .split(|c: char| !c.is_alphanumeric())
-        .filter(|w| !w.is_empty())
-        .any(|w| GOLD_WORDS.contains(&w))
+    lower.split(|c: char| !c.is_alphanumeric()).filter(|w| !w.is_empty()).any(|w| GOLD_WORDS.contains(&w))
 }
 
 /// Built-in presets generated from the current cheat table:
@@ -117,11 +110,7 @@ pub fn builtin_presets(aliases: &[(String, Option<ScalarValue>)]) -> Vec<Preset>
     if entries.is_empty() {
         return Vec::new();
     }
-    vec![Preset {
-        name: MAX_GOLD.to_string(),
-        entries,
-        builtin: true,
-    }]
+    vec![Preset { name: MAX_GOLD.to_string(), entries, builtin: true }]
 }
 
 impl PresetStore {
@@ -136,15 +125,13 @@ impl PresetStore {
     pub fn load(data_dir: &Path) -> Result<PresetStore> {
         let path = Self::path_in(data_dir);
         let data = match fs::read_to_string(&path) {
-            Ok(text) => serde_json::from_str::<PresetFile>(&text).with_context(|| format!("{} is not valid", path.display()))?,
+            Ok(text) => {
+                serde_json::from_str::<PresetFile>(&text).with_context(|| format!("{} is not valid", path.display()))?
+            }
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => PresetFile::default(),
             Err(e) => return Err(anyhow!("cannot read {}: {e}", path.display())),
         };
-        Ok(PresetStore {
-            path,
-            data,
-            corrupt: false,
-        })
+        Ok(PresetStore { path, data, corrupt: false })
     }
 
     /// Like [`PresetStore::load`] but never fails: on error an empty store is
@@ -154,11 +141,7 @@ impl PresetStore {
         match Self::load(data_dir) {
             Ok(s) => (s, None),
             Err(e) => (
-                PresetStore {
-                    path: Self::path_in(data_dir),
-                    data: PresetFile::default(),
-                    corrupt: true,
-                },
+                PresetStore { path: Self::path_in(data_dir), data: PresetFile::default(), corrupt: true },
                 Some(format!("{e:#}")),
             ),
         }
@@ -171,11 +154,7 @@ impl PresetStore {
 
     /// Custom presets of a game.
     pub fn presets(&self, game: i64) -> &[Preset] {
-        self.data
-            .games
-            .get(&game.to_string())
-            .map(|g| g.presets.as_slice())
-            .unwrap_or(&[])
+        self.data.games.get(&game.to_string()).map(|g| g.presets.as_slice()).unwrap_or(&[])
     }
 
     /// Adds or replaces (same name, case-insensitive) a preset and saves.
@@ -192,11 +171,7 @@ impl PresetStore {
         }
         let slot = self.data.games.entry(game.to_string()).or_default();
         slot.name = game_name.to_string();
-        let preset = Preset {
-            name: name.clone(),
-            builtin: false,
-            ..preset
-        };
+        let preset = Preset { name: name.clone(), builtin: false, ..preset };
         match slot.presets.iter_mut().find(|p| p.name.eq_ignore_ascii_case(&name)) {
             Some(existing) => *existing = preset,
             None => slot.presets.push(preset),
@@ -223,10 +198,7 @@ impl PresetStore {
 
     /// Writes the file atomically (temporary file in the data dir + rename).
     pub fn save(&mut self) -> Result<()> {
-        let dir = self
-            .path
-            .parent()
-            .ok_or_else(|| anyhow!("{} has no parent directory", self.path.display()))?;
+        let dir = self.path.parent().ok_or_else(|| anyhow!("{} has no parent directory", self.path.display()))?;
         fs::create_dir_all(dir).with_context(|| format!("cannot create {}", dir.display()))?;
         if self.corrupt && self.path.exists() {
             let aside = self.path.with_extension("json.corrupt");
@@ -281,11 +253,7 @@ mod tests {
         assert!(s.presets(1).is_empty());
         let preset = Preset {
             name: "Speedrun".into(),
-            entries: vec![PresetEntry {
-                alias: "Vida".into(),
-                value: "100".into(),
-                freeze: true,
-            }],
+            entries: vec![PresetEntry { alias: "Vida".into(), value: "100".into(), freeze: true }],
             builtin: false,
         };
         s.upsert(1, "RPG", preset.clone()).unwrap();

@@ -17,8 +17,8 @@ pub mod hotkeys;
 pub use config::{HotkeyConfig, SaveLensConfig};
 pub use daemon::{Daemon, DaemonEvent, DaemonHandle, DaemonOptions};
 pub use engine::{
-    is_payload_raw, CheatValue, CheckoutReport, EditReport, EditTarget, Engine, FileDiff, FileStatus, TrackedFile, TrainerReport,
-    WORKING,
+    is_payload_raw, CheatValue, CheckoutReport, EditReport, EditTarget, Engine, FileDiff, FileStatus, TrackedFile,
+    TrainerReport, WORKING,
 };
 pub use error::{EngineError, EngineResult};
 pub use hotkeys::{HotkeyAction, HotkeyService};

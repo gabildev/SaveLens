@@ -45,9 +45,6 @@ pub enum DiscoveryError {
 
 impl DiscoveryError {
     pub(crate) fn io(path: impl Into<PathBuf>, source: std::io::Error) -> Self {
-        DiscoveryError::Io {
-            path: path.into(),
-            source,
-        }
+        DiscoveryError::Io { path: path.into(), source }
     }
 }

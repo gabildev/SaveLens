@@ -55,9 +55,6 @@ pub enum CasError {
 impl CasError {
     /// Wraps an I/O error with its path.
     pub fn io(path: impl Into<PathBuf>, source: std::io::Error) -> Self {
-        CasError::Io {
-            path: path.into(),
-            source,
-        }
+        CasError::Io { path: path.into(), source }
     }
 }

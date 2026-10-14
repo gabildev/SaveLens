@@ -6,7 +6,9 @@ pub mod keys;
 
 use savelens_core::{CryptoScheme, LayerDescriptor};
 
-use self::cipher::{aes_decrypt, aes_encrypt, es3_decrypt, es3_encrypt, xor_decrypt, xor_encrypt, Padding, RollingMode};
+use self::cipher::{
+    aes_decrypt, aes_encrypt, es3_decrypt, es3_encrypt, xor_decrypt, xor_encrypt, Padding, RollingMode,
+};
 use self::keys::{IvSource, KeyProfile, SchemeName};
 use super::{Identity, Layer};
 use crate::error::{CodecError, CodecResult};
@@ -14,21 +16,9 @@ use crate::error::{CodecError, CodecResult};
 /// Parameters recovered while decrypting.
 #[derive(Debug, Clone)]
 enum CipherState {
-    Aes {
-        mode: cipher::AesMode,
-        key: Vec<u8>,
-        iv: [u8; 16],
-        iv_prefix: bool,
-        padding: Padding,
-    },
-    Xor {
-        key: Vec<u8>,
-        rolling: RollingMode,
-    },
-    Es3 {
-        password: Vec<u8>,
-        iv: [u8; 16],
-    },
+    Aes { mode: cipher::AesMode, key: Vec<u8>, iv: [u8; 16], iv_prefix: bool, padding: Padding },
+    Xor { key: Vec<u8>, rolling: RollingMode },
+    Es3 { password: Vec<u8>, iv: [u8; 16] },
 }
 
 /// Crypto layer.
@@ -75,16 +65,7 @@ impl CryptoLayer {
                     _ => (profile.fixed_iv()?, false, data),
                 };
                 let plain = aes_decrypt(mode, &key, &iv, profile.padding, body)?;
-                (
-                    CipherState::Aes {
-                        mode,
-                        key,
-                        iv,
-                        iv_prefix,
-                        padding: profile.padding,
-                    },
-                    plain,
-                )
+                (CipherState::Aes { mode, key, iv, iv_prefix, padding: profile.padding }, plain)
             }
         };
         Ok((
@@ -105,10 +86,7 @@ impl CryptoLayer {
             CryptoLayer {
                 profile_name: format!("auto-xor-{key:#04x}"),
                 scheme: CryptoScheme::XorFixed,
-                state: CipherState::Xor {
-                    key: vec![key],
-                    rolling: RollingMode::Fixed,
-                },
+                state: CipherState::Xor { key: vec![key], rolling: RollingMode::Fixed },
                 identity: Identity::new(data, &plain),
             },
             plain,
@@ -123,10 +101,7 @@ impl CryptoLayer {
 
 impl Layer for CryptoLayer {
     fn descriptor(&self) -> LayerDescriptor {
-        LayerDescriptor::Crypto {
-            scheme: self.scheme,
-            profile: self.profile_name.clone(),
-        }
+        LayerDescriptor::Crypto { scheme: self.scheme, profile: self.profile_name.clone() }
     }
 
     fn wrap(&self, inner: &[u8]) -> CodecResult<Vec<u8>> {
@@ -136,13 +111,7 @@ impl Layer for CryptoLayer {
         match &self.state {
             CipherState::Es3 { password, iv } => es3_encrypt(password, iv, inner),
             CipherState::Xor { key, rolling } => xor_encrypt(key, *rolling, inner),
-            CipherState::Aes {
-                mode,
-                key,
-                iv,
-                iv_prefix,
-                padding,
-            } => {
+            CipherState::Aes { mode, key, iv, iv_prefix, padding } => {
                 let ct = aes_encrypt(*mode, key, iv, *padding, inner)?;
                 if *iv_prefix {
                     let mut out = iv.to_vec();

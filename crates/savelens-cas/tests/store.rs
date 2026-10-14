@@ -87,13 +87,18 @@ fn commits_branches_tags_and_log() {
     let (_t, store, game_dir) = setup();
     let g = store.ensure_game("Test Game", Some(413150), &game_dir, &["*.sav".to_string()], "native").unwrap();
     assert_eq!(g.current_branch, "main");
-    let ch = |name: &str, data: &[u8]| FileChange {
-        rel_path: name.to_string(),
-        content: Some(data.to_vec()),
-        mtime: None,
-    };
+    let ch =
+        |name: &str, data: &[u8]| FileChange { rel_path: name.to_string(), content: Some(data.to_vec()), mtime: None };
     let c1 = store
-        .create_commit(g.id, "main", &[ch("slot1.sav", b"v1"), ch("slot2.sav", b"other")], CommitKind::Import, "import", "", &[])
+        .create_commit(
+            g.id,
+            "main",
+            &[ch("slot1.sav", b"v1"), ch("slot2.sav", b"other")],
+            CommitKind::Import,
+            "import",
+            "",
+            &[],
+        )
         .unwrap()
         .unwrap();
     // Identical snapshot: no commit.
@@ -304,11 +309,7 @@ fn stats_report_dedup() {
             .create_commit(
                 g.id,
                 "main",
-                &[FileChange {
-                    rel_path: "s.sav".into(),
-                    content: Some(v),
-                    mtime: None,
-                }],
+                &[FileChange { rel_path: "s.sav".into(), content: Some(v), mtime: None }],
                 CommitKind::Auto,
                 "save",
                 "",

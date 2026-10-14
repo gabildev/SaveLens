@@ -58,12 +58,7 @@ pub struct OverlayOptions {
 
 impl Default for OverlayOptions {
     fn default() -> Self {
-        OverlayOptions {
-            game: None,
-            opacity: 0.88,
-            embedded_daemon: true,
-            hotkeys: true,
-        }
+        OverlayOptions { game: None, opacity: 0.88, embedded_daemon: true, hotkeys: true }
     }
 }
 
@@ -101,10 +96,7 @@ pub fn viewport(opts: &OverlayOptions) -> egui::ViewportBuilder {
 
 /// Opens the overlay window and runs it until it is closed.
 pub fn run(engine: savelens_watcher::Engine, opts: OverlayOptions) -> anyhow::Result<()> {
-    let native = eframe::NativeOptions {
-        viewport: viewport(&opts),
-        ..Default::default()
-    };
+    let native = eframe::NativeOptions { viewport: viewport(&opts), ..Default::default() };
     let app = OverlayApp::new(engine, opts)?;
     eframe::run_native(
         "SaveLens Overlay",

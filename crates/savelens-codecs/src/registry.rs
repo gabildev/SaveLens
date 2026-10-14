@@ -61,23 +61,14 @@ impl CodecRegistry {
 
     /// Codecs with a non-zero confidence, best first.
     pub fn rank(&self, bytes: &[u8], ctx: &DetectContext) -> Vec<(Confidence, Arc<dyn StructuralCodec>)> {
-        let mut v: Vec<(Confidence, Arc<dyn StructuralCodec>)> = self
-            .codecs
-            .iter()
-            .map(|c| (c.detect(bytes, ctx), c.clone()))
-            .filter(|(conf, _)| *conf > 0)
-            .collect();
+        let mut v: Vec<(Confidence, Arc<dyn StructuralCodec>)> =
+            self.codecs.iter().map(|c| (c.detect(bytes, ctx), c.clone())).filter(|(conf, _)| *conf > 0).collect();
         v.sort_by_key(|e| std::cmp::Reverse(e.0));
         v
     }
 
     /// Best non-raw confidence for `bytes`.
     pub fn best_structured_confidence(&self, bytes: &[u8], ctx: &DetectContext) -> Confidence {
-        self.codecs
-            .iter()
-            .filter(|c| c.id() != "raw")
-            .map(|c| c.detect(bytes, ctx))
-            .max()
-            .unwrap_or(0)
+        self.codecs.iter().filter(|c| c.id() != "raw").map(|c| c.detect(bytes, ctx)).max().unwrap_or(0)
     }
 }

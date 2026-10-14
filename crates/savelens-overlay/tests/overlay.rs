@@ -15,18 +15,12 @@ use savelens_overlay::*;
 use savelens_watcher::{Engine, HotkeyAction, HotkeyConfig, SaveLensConfig, WORKING};
 
 fn save_json(gold: i64, hp: f64, level: i64) -> Vec<u8> {
-    format!(
-        "{{\n  \"Player\": {{\n    \"Gold\": {gold},\n    \"HP\": {hp:.1},\n    \"Level\": {level}\n  }}\n}}\n"
-    )
-    .into_bytes()
+    format!("{{\n  \"Player\": {{\n    \"Gold\": {gold},\n    \"HP\": {hp:.1},\n    \"Level\": {level}\n  }}\n}}\n")
+        .into_bytes()
 }
 
 fn listing(dir: &Path) -> BTreeSet<String> {
-    fs::read_dir(dir)
-        .unwrap()
-        .flatten()
-        .map(|e| e.file_name().to_string_lossy().to_string())
-        .collect()
+    fs::read_dir(dir).unwrap().flatten().map(|e| e.file_name().to_string_lossy().to_string()).collect()
 }
 
 struct Env {
@@ -44,10 +38,7 @@ impl Env {
 
     fn gold_on_disk(&self) -> Option<ScalarValue> {
         let root = self.engine.root_at(self.game, WORKING, "slot1.json").unwrap();
-        Location::Ast {
-            path: NodePath::parse("Player.Gold").unwrap(),
-        }
-        .read(&root)
+        Location::Ast { path: NodePath::parse("Player.Gold").unwrap() }.read(&root)
     }
 
     fn controller(&self) -> OverlayController {
@@ -56,12 +47,7 @@ impl Env {
 }
 
 fn quiet_opts() -> OverlayOptions {
-    OverlayOptions {
-        game: None,
-        opacity: 0.85,
-        embedded_daemon: false,
-        hotkeys: false,
-    }
+    OverlayOptions { game: None, opacity: 0.85, embedded_daemon: false, hotkeys: false }
 }
 
 fn env_with(config: SaveLensConfig) -> Env {
@@ -71,26 +57,11 @@ fn env_with(config: SaveLensConfig) -> Env {
     fs::write(saves.join("slot1.json"), save_json(1200, 87.5, 7)).unwrap();
     let data = tmp.path().join("data");
     let engine = Engine::new(Store::open(&data).unwrap(), EnvelopePipeline::builtin(), config);
-    let (game, _) = engine
-        .track("Test RPG", Some(42), &saves, &["*.json".to_string()], "native")
-        .unwrap();
+    let (game, _) = engine.track("Test RPG", Some(42), &saves, &["*.json".to_string()], "native").unwrap();
     engine
-        .pin(
-            game.id,
-            "slot1.json",
-            "Gold",
-            &Location::Ast {
-                path: NodePath::parse("Player.Gold").unwrap(),
-            },
-        )
+        .pin(game.id, "slot1.json", "Gold", &Location::Ast { path: NodePath::parse("Player.Gold").unwrap() })
         .unwrap();
-    Env {
-        saves: saves.canonicalize().unwrap(),
-        data,
-        engine,
-        game: game.id,
-        _tmp: tmp,
-    }
+    Env { saves: saves.canonicalize().unwrap(), data, engine, game: game.id, _tmp: tmp }
 }
 
 fn env() -> Env {
@@ -104,16 +75,7 @@ fn set_mtime(path: &Path, t: SystemTime) {
 #[test]
 fn controller_loads_the_cheat_table_with_live_values() {
     let e = env();
-    e.engine
-        .pin(
-            e.game,
-            "slot1.json",
-            "Vida",
-            &Location::Ast {
-                path: NodePath::parse("Player.HP").unwrap(),
-            },
-        )
-        .unwrap();
+    e.engine.pin(e.game, "slot1.json", "Vida", &Location::Ast { path: NodePath::parse("Player.HP").unwrap() }).unwrap();
     let c = e.controller();
     assert_eq!(c.selected_game().map(|g| g.id), Some(e.game));
     let rows = c.rows();
@@ -353,10 +315,7 @@ fn toggle_overlay_requests_leave_daemon_requests_pending() {
 fn hotkeys_unavailable_degrade_to_an_amber_notice() {
     let e = env();
     let mut c = e.controller();
-    let cfg = HotkeyConfig {
-        quick_snapshot: "ctrl+shift+NotAKey".into(),
-        ..HotkeyConfig::default()
-    };
+    let cfg = HotkeyConfig { quick_snapshot: "ctrl+shift+NotAKey".into(), ..HotkeyConfig::default() };
     c.start_hotkeys_with(&cfg);
     assert!(c.hotkey_status().is_warning());
     assert!(c.hotkey_status().describe().contains("unavailable"));
@@ -365,11 +324,7 @@ fn hotkeys_unavailable_degrade_to_an_amber_notice() {
     let mut config = SaveLensConfig::default();
     config.hotkeys.enabled = false;
     let engine = Engine::new(e.engine.store().clone(), EnvelopePipeline::builtin(), config);
-    let opts = OverlayOptions {
-        hotkeys: true,
-        embedded_daemon: false,
-        ..quiet_opts()
-    };
+    let opts = OverlayOptions { hotkeys: true, embedded_daemon: false, ..quiet_opts() };
     let mut c = OverlayController::new(engine, &opts).unwrap();
     c.start_services();
     assert_eq!(c.hotkey_status(), &HotkeyStatus::DisabledInConfig);
@@ -395,20 +350,14 @@ fn empty_store_and_unknown_game_degrade_gracefully() {
     assert!(c.notices().any(|n| n.level == NoticeLevel::Error));
 
     let e = env();
-    let opts = OverlayOptions {
-        game: Some(9999),
-        ..quiet_opts()
-    };
+    let opts = OverlayOptions { game: Some(9999), ..quiet_opts() };
     let c = OverlayController::new(e.engine.clone(), &opts).unwrap();
     assert_eq!(c.selected_game().map(|g| g.id), Some(e.game), "falls back to a tracked game");
     assert!(c.notices().any(|n| n.text.contains("#9999")));
 }
 
 fn raw_input(size: egui::Vec2) -> egui::RawInput {
-    egui::RawInput {
-        screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, size)),
-        ..Default::default()
-    }
+    egui::RawInput { screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, size)), ..Default::default() }
 }
 
 #[test]
@@ -424,12 +373,7 @@ fn egui_frames_render_at_normal_and_tiny_sizes() {
     }
     app.controller_mut().notify(NoticeLevel::Warn, "test notice");
     let ctx = egui::Context::default();
-    for size in [
-        egui::vec2(360.0, 520.0),
-        egui::vec2(150.0, 90.0),
-        egui::vec2(10.0, 10.0),
-        egui::vec2(1.0, 1.0),
-    ] {
+    for size in [egui::vec2(360.0, 520.0), egui::vec2(150.0, 90.0), egui::vec2(10.0, 10.0), egui::vec2(1.0, 1.0)] {
         for _ in 0..3 {
             let out = ctx.run(raw_input(size), |ctx| app.ui(ctx));
             assert!(!out.shapes.is_empty() || size.x < 2.0);
@@ -466,11 +410,7 @@ fn viewport_is_transparent_always_on_top_and_borderless() {
     assert_eq!(vp.inner_size, Some(egui::vec2(360.0, 520.0)));
     assert!(vp.title.as_deref().is_some_and(|t| t.contains("SaveLens")));
     assert!((opts.clamped_opacity() - 0.88).abs() < f32::EPSILON);
-    let odd = OverlayOptions {
-        opacity: f32::NAN,
-        game: Some(3),
-        ..OverlayOptions::default()
-    };
+    let odd = OverlayOptions { opacity: f32::NAN, game: Some(3), ..OverlayOptions::default() };
     assert_eq!(odd.clamped_opacity(), 1.0);
     assert!(viewport(&odd).title.unwrap().contains("#3"));
     assert_eq!(OverlayOptions { opacity: 0.0, ..odd }.clamped_opacity(), 0.2);
@@ -478,19 +418,11 @@ fn viewport_is_transparent_always_on_top_and_borderless() {
 
 #[test]
 fn embedded_daemon_freezes_on_save_and_reports_latency() {
-    let mut config = SaveLensConfig {
-        debounce_ms: 150,
-        close_write_quiet_ms: 60,
-        stability_ms: 30,
-        ..SaveLensConfig::default()
-    };
+    let mut config =
+        SaveLensConfig { debounce_ms: 150, close_write_quiet_ms: 60, stability_ms: 30, ..SaveLensConfig::default() };
     config.hotkeys.enabled = false;
     let e = env_with(config);
-    let opts = OverlayOptions {
-        embedded_daemon: true,
-        hotkeys: true,
-        ..quiet_opts()
-    };
+    let opts = OverlayOptions { embedded_daemon: true, hotkeys: true, ..quiet_opts() };
     let mut c = OverlayController::new(e.engine.clone(), &opts).unwrap();
     c.start_services();
     assert_eq!(c.daemon_mode(), &DaemonMode::Embedded);

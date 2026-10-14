@@ -7,9 +7,7 @@ use std::time::{Duration, Instant};
 use egui::{Align, Color32, Layout, RichText, Sense, Stroke, StrokeKind, Ui, ViewportCommand};
 use savelens_watcher::Engine;
 
-use crate::controller::{
-    CheatRow, DaemonMode, NoticeLevel, OverlayCommand, OverlayController, Trend, LATENCY_WARN_MS,
-};
+use crate::controller::{CheatRow, DaemonMode, NoticeLevel, OverlayCommand, OverlayController, Trend, LATENCY_WARN_MS};
 use crate::theme;
 use crate::OverlayOptions;
 
@@ -90,14 +88,10 @@ impl OverlayApp {
                 }
             }
         }
-        egui::CentralPanel::default()
-            .frame(theme::panel_frame(self.opacity))
-            .show(ctx, |ui| {
-                self.header(ui, ctx);
-                egui::ScrollArea::vertical()
-                    .auto_shrink([false, false])
-                    .show(ui, |ui| self.body(ui));
-            });
+        egui::CentralPanel::default().frame(theme::panel_frame(self.opacity)).show(ctx, |ui| {
+            self.header(ui, ctx);
+            egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| self.body(ui));
+        });
         ctx.request_repaint_after(Duration::from_millis(250));
     }
 
@@ -129,7 +123,8 @@ impl OverlayApp {
         let resp = ui
             .horizontal(|ui| {
                 ui.label(RichText::new("◆ SAVELENS").color(theme::CYAN).strong().heading());
-                let games: Vec<(i64, String)> = self.controller.games().iter().map(|g| (g.id, g.name.clone())).collect();
+                let games: Vec<(i64, String)> =
+                    self.controller.games().iter().map(|g| (g.id, g.name.clone())).collect();
                 if !games.is_empty() {
                     let current = self.controller.selected_game().map(|g| g.name.clone()).unwrap_or_default();
                     let mut chosen = None;
@@ -185,7 +180,10 @@ impl OverlayApp {
             ui.horizontal(|ui| {
                 let mut on = self.controller.trainer_enabled();
                 let label = if on { "TRAINER ON" } else { "TRAINER OFF" };
-                if toggle(ui, &mut on).on_hover_text("Freeze-on-save: re-apply frozen values on every autosave").changed() {
+                if toggle(ui, &mut on)
+                    .on_hover_text("Freeze-on-save: re-apply frozen values on every autosave")
+                    .changed()
+                {
                     let r = self.controller.set_trainer_enabled(on);
                     report(&mut self.controller, "trainer", r);
                 }
@@ -225,22 +223,18 @@ impl OverlayApp {
         }
         let opacity = self.opacity;
         theme::card_frame(opacity).show(ui, |ui| {
-            egui::Grid::new("overlay-cheats")
-                .num_columns(5)
-                .spacing([6.0, 4.0])
-                .striped(false)
-                .show(ui, |ui| {
-                    ui.label(RichText::new("VAR").small().color(theme::DIM));
-                    ui.label(RichText::new("ON DISK").small().color(theme::DIM));
-                    ui.label(RichText::new("TREND").small().color(theme::DIM));
-                    ui.label(RichText::new("❄").small().color(theme::DIM));
-                    ui.label(RichText::new("FROZEN").small().color(theme::DIM));
+            egui::Grid::new("overlay-cheats").num_columns(5).spacing([6.0, 4.0]).striped(false).show(ui, |ui| {
+                ui.label(RichText::new("VAR").small().color(theme::DIM));
+                ui.label(RichText::new("ON DISK").small().color(theme::DIM));
+                ui.label(RichText::new("TREND").small().color(theme::DIM));
+                ui.label(RichText::new("❄").small().color(theme::DIM));
+                ui.label(RichText::new("FROZEN").small().color(theme::DIM));
+                ui.end_row();
+                for row in &rows {
+                    self.cheat_row(ui, row);
                     ui.end_row();
-                    for row in &rows {
-                        self.cheat_row(ui, row);
-                        ui.end_row();
-                    }
-                });
+                }
+            });
         });
     }
 
@@ -283,11 +277,7 @@ impl OverlayApp {
         }
         let hint = row.current.map(|v| v.to_string()).unwrap_or_default();
         let resp = ui.add(
-            egui::TextEdit::singleline(buf)
-                .id(id)
-                .desired_width(70.0)
-                .font(egui::TextStyle::Monospace)
-                .hint_text(hint),
+            egui::TextEdit::singleline(buf).id(id).desired_width(70.0).font(egui::TextStyle::Monospace).hint_text(hint),
         );
         if resp.lost_focus() && *buf != stored {
             let input = buf.clone();
@@ -305,22 +295,20 @@ impl OverlayApp {
                 if !presets.iter().any(|p| p.name == self.selected_preset) {
                     self.selected_preset = presets.first().map(|p| p.name.clone()).unwrap_or_default();
                 }
-                let shown = if self.selected_preset.is_empty() {
-                    "(none)".to_string()
-                } else {
-                    self.selected_preset.clone()
-                };
-                egui::ComboBox::from_id_salt("overlay-preset")
-                    .selected_text(shown)
-                    .width(96.0)
-                    .show_ui(ui, |ui| {
-                        for p in &presets {
-                            let label = if p.builtin { format!("★ {}", p.name) } else { p.name.clone() };
-                            ui.selectable_value(&mut self.selected_preset, p.name.clone(), label);
-                        }
-                    });
+                let shown =
+                    if self.selected_preset.is_empty() { "(none)".to_string() } else { self.selected_preset.clone() };
+                egui::ComboBox::from_id_salt("overlay-preset").selected_text(shown).width(96.0).show_ui(ui, |ui| {
+                    for p in &presets {
+                        let label = if p.builtin { format!("★ {}", p.name) } else { p.name.clone() };
+                        ui.selectable_value(&mut self.selected_preset, p.name.clone(), label);
+                    }
+                });
                 let has = !self.selected_preset.is_empty();
-                if ui.add_enabled(has, egui::Button::new("Load")).on_hover_text("Set the frozen values of this template").clicked() {
+                if ui
+                    .add_enabled(has, egui::Button::new("Load"))
+                    .on_hover_text("Set the frozen values of this template")
+                    .clicked()
+                {
                     let name = self.selected_preset.clone();
                     let r = self.controller.apply_preset(&name);
                     report(&mut self.controller, "load preset", r);
@@ -331,13 +319,13 @@ impl OverlayApp {
                     let r = self.controller.delete_preset(&name);
                     report(&mut self.controller, "delete preset", r);
                 }
-                ui.add(
-                    egui::TextEdit::singleline(&mut self.preset_name)
-                        .desired_width(80.0)
-                        .hint_text("name…"),
-                );
+                ui.add(egui::TextEdit::singleline(&mut self.preset_name).desired_width(80.0).hint_text("name…"));
                 let can_save = !self.preset_name.trim().is_empty();
-                if ui.add_enabled(can_save, egui::Button::new("Save")).on_hover_text("Save the current frozen values as a template").clicked() {
+                if ui
+                    .add_enabled(can_save, egui::Button::new("Save"))
+                    .on_hover_text("Save the current frozen values as a template")
+                    .clicked()
+                {
                     let name = self.preset_name.trim().to_string();
                     match self.controller.save_preset(&name) {
                         Ok(p) => {
@@ -445,7 +433,8 @@ fn empty_state(ui: &mut Ui, title: &str, hint: &str) {
 }
 
 fn neon_button(text: &str, accent: Color32) -> egui::Button<'static> {
-    egui::Button::new(RichText::new(text.to_string()).color(accent)).stroke(Stroke::new(1.0_f32, accent.gamma_multiply(0.7)))
+    egui::Button::new(RichText::new(text.to_string()).color(accent))
+        .stroke(Stroke::new(1.0_f32, accent.gamma_multiply(0.7)))
 }
 
 /// iOS-style switch.
@@ -486,9 +475,7 @@ fn sparkline(ui: &mut Ui, row: &CheatRow) {
     if values.len() < 2 {
         return;
     }
-    let (min, max) = values
-        .iter()
-        .fold((f64::INFINITY, f64::NEG_INFINITY), |(a, b), v| (a.min(*v), b.max(*v)));
+    let (min, max) = values.iter().fold((f64::INFINITY, f64::NEG_INFINITY), |(a, b), v| (a.min(*v), b.max(*v)));
     let span = if max > min { max - min } else { 1.0 };
     let n = values.len();
     let points: Vec<egui::Pos2> = values

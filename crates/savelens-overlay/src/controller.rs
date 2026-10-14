@@ -166,11 +166,9 @@ impl HotkeyStatus {
             HotkeyStatus::Off => "global hotkeys off".into(),
             HotkeyStatus::DisabledInConfig => "global hotkeys disabled in config.toml".into(),
             HotkeyStatus::OwnedByDaemon { pid } => format!("hotkeys handled by `savelens watch` (pid {pid})"),
-            HotkeyStatus::Active { bindings } => bindings
-                .iter()
-                .map(|(a, k)| format!("{k} {}", short_label(*a)))
-                .collect::<Vec<_>>()
-                .join(" · "),
+            HotkeyStatus::Active { bindings } => {
+                bindings.iter().map(|(a, k)| format!("{k} {}", short_label(*a))).collect::<Vec<_>>().join(" · ")
+            }
             HotkeyStatus::Unavailable(e) => format!("hotkeys unavailable: {e}"),
         }
     }
@@ -291,13 +289,8 @@ impl OverlayController {
     pub fn new(engine: Engine, opts: &OverlayOptions) -> Result<Self> {
         let games = engine.store().games().context("cannot list tracked games")?;
         let (presets, preset_error) = PresetStore::load_lenient(engine.store().root());
-        let event_cursor = engine
-            .store()
-            .events(None, 1)
-            .context("cannot read the activity log")?
-            .first()
-            .map(|e| e.id)
-            .unwrap_or(0);
+        let event_cursor =
+            engine.store().events(None, 1).context("cannot read the activity log")?.first().map(|e| e.id).unwrap_or(0);
         let (actions_tx, actions_rx) = unbounded();
         let (daemon_tx, daemon_rx) = unbounded();
         let mut c = OverlayController {
@@ -441,9 +434,7 @@ impl OverlayController {
                 let rx = service.actions().clone();
                 match spawn_forwarder("savelens-overlay-hotkeys", rx, self.actions_tx.clone(), self.waker.clone()) {
                     Ok(()) => {
-                        self.hotkey_status = HotkeyStatus::Active {
-                            bindings: service.bindings().to_vec(),
-                        };
+                        self.hotkey_status = HotkeyStatus::Active { bindings: service.bindings().to_vec() };
                         self.hotkeys = Some(service);
                     }
                     Err(e) => self.hotkey_status = HotkeyStatus::Unavailable(format!("{e:#}")),
@@ -531,11 +522,7 @@ impl OverlayController {
             NoticeLevel::Error => tracing::warn!("overlay: {text}"),
             _ => tracing::info!("overlay: {text}"),
         }
-        self.notices.push_back(Notice {
-            level,
-            text,
-            at: Instant::now(),
-        });
+        self.notices.push_back(Notice { level, text, at: Instant::now() });
         while self.notices.len() > MAX_NOTICES {
             self.notices.pop_front();
         }
@@ -547,9 +534,7 @@ impl OverlayController {
     }
 
     fn require_game(&self) -> Result<GameRecord> {
-        self.selected_game()
-            .cloned()
-            .ok_or_else(|| anyhow!("no game selected — track a game first"))
+        self.selected_game().cloned().ok_or_else(|| anyhow!("no game selected — track a game first"))
     }
 
     // ------------------------------------------------------------------
@@ -779,16 +764,9 @@ impl OverlayController {
     /// Snapshot of every tracked file, then the template is injected.
     pub fn quick_snapshot(&mut self) -> Result<SnapshotOutcome> {
         let game = self.require_game()?;
-        let snap = self
-            .engine
-            .snapshot(game.id, "quick snapshot (overlay)", CommitKind::Manual)?
-            .map(|c| c.id);
-        let has_rules = self
-            .engine
-            .store()
-            .cheats(game.id)?
-            .iter()
-            .any(|c| c.freeze_enabled && c.frozen_value.is_some());
+        let snap = self.engine.snapshot(game.id, "quick snapshot (overlay)", CommitKind::Manual)?.map(|c| c.id);
+        let has_rules =
+            self.engine.store().cheats(game.id)?.iter().any(|c| c.freeze_enabled && c.frozen_value.is_some());
         let (latency, trainer_commits) = if has_rules { self.inject_all(&game)? } else { (None, Vec::new()) };
         let text = match (snap, &latency) {
             (Some(c), Some(l)) => format!("snapshot #{c} + template ({:.1} ms)", l.ms),
@@ -798,11 +776,7 @@ impl OverlayController {
         };
         self.notify(NoticeLevel::Info, text);
         self.refresh(true)?;
-        Ok(SnapshotOutcome {
-            snapshot: snap,
-            trainer_commits,
-            latency,
-        })
+        Ok(SnapshotOutcome { snapshot: snap, trainer_commits, latency })
     }
 
     /// Restores the previous commit of the current branch.
@@ -827,10 +801,7 @@ impl OverlayController {
             None => PanicScope::Latest,
         };
         let rep = self.engine.panic_restore(&scope)?;
-        self.notify(
-            NoticeLevel::Warn,
-            format!("PANIC RESTORE: {} ← {}", rep.path.display(), rep.restored_tag),
-        );
+        self.notify(NoticeLevel::Warn, format!("PANIC RESTORE: {} ← {}", rep.path.display(), rep.restored_tag));
         if self.selected.is_some() {
             self.refresh(true)?;
         }
@@ -846,7 +817,8 @@ impl OverlayController {
     pub fn presets(&self) -> Vec<Preset> {
         let Some(id) = self.selected else { return Vec::new() };
         let custom = self.presets.presets(id);
-        let aliases: Vec<(String, Option<ScalarValue>)> = self.rows.iter().map(|r| (r.alias.clone(), r.current)).collect();
+        let aliases: Vec<(String, Option<ScalarValue>)> =
+            self.rows.iter().map(|r| (r.alias.clone(), r.current)).collect();
         let mut out: Vec<Preset> = builtin_presets(&aliases)
             .into_iter()
             .filter(|b| !custom.iter().any(|c| c.name.eq_ignore_ascii_case(&b.name)))
@@ -870,21 +842,13 @@ impl OverlayController {
             .iter()
             .filter_map(|r| {
                 let value = r.frozen_value.or(if r.freeze_enabled { r.current } else { None })?;
-                Some(PresetEntry {
-                    alias: r.alias.clone(),
-                    value: value.to_string(),
-                    freeze: r.freeze_enabled,
-                })
+                Some(PresetEntry { alias: r.alias.clone(), value: value.to_string(), freeze: r.freeze_enabled })
             })
             .collect();
         if entries.is_empty() {
             bail!("nothing to save: set a frozen value on at least one variable");
         }
-        let preset = Preset {
-            name: name.trim().to_string(),
-            entries,
-            builtin: false,
-        };
+        let preset = Preset { name: name.trim().to_string(), entries, builtin: false };
         self.presets.upsert(game.id, &game.name, preset.clone())?;
         self.notify(NoticeLevel::Info, format!("preset `{}` saved", preset.name));
         Ok(preset)
@@ -916,10 +880,7 @@ impl OverlayController {
         if !missing.is_empty() {
             text.push_str(&format!(" (not pinned here: {})", missing.join(", ")));
         }
-        self.notify(
-            if missing.is_empty() { NoticeLevel::Info } else { NoticeLevel::Warn },
-            text,
-        );
+        self.notify(if missing.is_empty() { NoticeLevel::Info } else { NoticeLevel::Warn }, text);
         self.refresh(false)?;
         Ok(missing)
     }
@@ -975,12 +936,7 @@ impl OverlayController {
         let selected_name = self.selected_game().map(|g| g.name.clone());
         let ours = |game: &str| selected_name.as_deref() == Some(game);
         match ev {
-            DaemonEvent::TrainerApplied {
-                game,
-                rel_path,
-                applied,
-                elapsed_ms,
-            } => {
+            DaemonEvent::TrainerApplied { game, rel_path, applied, elapsed_ms } => {
                 if ours(&game) {
                     self.latency = Some(LatencySample {
                         ms: elapsed_ms,
@@ -993,9 +949,7 @@ impl OverlayController {
                 }
                 self.push_activity(format!("❄ {game}: {} → {rel_path} ({elapsed_ms:.1} ms)", applied.join(", ")));
             }
-            DaemonEvent::Committed {
-                game_id, game, summary, commit, ..
-            } => {
+            DaemonEvent::Committed { game_id, game, summary, commit, .. } => {
                 if self.selected == Some(game_id) {
                     self.refresh_pending = true;
                 }

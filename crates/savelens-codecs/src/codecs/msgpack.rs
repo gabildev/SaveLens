@@ -105,10 +105,9 @@ impl Family {
                 return Ok(f);
             }
         }
-        [LenFmt::Fix, LenFmt::W8, LenFmt::W16, LenFmt::W32]
-            .into_iter()
-            .find(|f| self.fits(*f, n))
-            .ok_or_else(|| CodecError::unencodable(CODEC, path, format!("length {n} exceeds the MessagePack 32-bit limit")))
+        [LenFmt::Fix, LenFmt::W8, LenFmt::W16, LenFmt::W32].into_iter().find(|f| self.fits(*f, n)).ok_or_else(|| {
+            CodecError::unencodable(CODEC, path, format!("length {n} exceeds the MessagePack 32-bit limit"))
+        })
     }
 }
 
@@ -145,19 +144,12 @@ impl ExtFmt {
                 return Ok(f);
             }
         }
-        [
-            ExtFmt::Fix1,
-            ExtFmt::Fix2,
-            ExtFmt::Fix4,
-            ExtFmt::Fix8,
-            ExtFmt::Fix16,
-            ExtFmt::E8,
-            ExtFmt::E16,
-            ExtFmt::E32,
-        ]
-        .into_iter()
-        .find(|f| f.fits(n))
-        .ok_or_else(|| CodecError::unencodable(CODEC, path, format!("ext data of {n} bytes exceeds the 32-bit limit")))
+        [ExtFmt::Fix1, ExtFmt::Fix2, ExtFmt::Fix4, ExtFmt::Fix8, ExtFmt::Fix16, ExtFmt::E8, ExtFmt::E16, ExtFmt::E32]
+            .into_iter()
+            .find(|f| f.fits(n))
+            .ok_or_else(|| {
+                CodecError::unencodable(CODEC, path, format!("ext data of {n} bytes exceeds the 32-bit limit"))
+            })
     }
 }
 
@@ -260,15 +252,11 @@ impl<'a> Parser<'a> {
     #[inline(never)]
     fn scalar(&mut self, m: u8) -> CodecResult<MVal> {
         Ok(match m {
-            0x00..=0x7f => MVal::Int {
-                fmt: IntFmt::PosFix,
-                v: m as i128,
-            },
-            0x80..=0x9f | 0xdc..=0xdf => return Err(self.r.malformed(format!("container marker {m:#04x} in scalar position"))),
-            0xa0..=0xbf => MVal::Str {
-                fmt: LenFmt::Fix,
-                raw: self.bytes((m & 0x1f) as usize, "fixstr")?,
-            },
+            0x00..=0x7f => MVal::Int { fmt: IntFmt::PosFix, v: m as i128 },
+            0x80..=0x9f | 0xdc..=0xdf => {
+                return Err(self.r.malformed(format!("container marker {m:#04x} in scalar position")))
+            }
+            0xa0..=0xbf => MVal::Str { fmt: LenFmt::Fix, raw: self.bytes((m & 0x1f) as usize, "fixstr")? },
             0xc0 => MVal::Nil,
             0xc1 => return Err(self.r.malformed("reserved marker 0xc1")),
             0xc2 => MVal::Bool(false),
@@ -276,48 +264,21 @@ impl<'a> Parser<'a> {
             0xc4..=0xc6 => {
                 let fmt = [LenFmt::W8, LenFmt::W16, LenFmt::W32][(m - 0xc4) as usize];
                 let n = self.len(fmt, 0, "bin length")?;
-                MVal::Bin {
-                    fmt,
-                    data: self.bytes(n, "bin data")?,
-                }
+                MVal::Bin { fmt, data: self.bytes(n, "bin data")? }
             }
             0xc7 => self.ext(ExtFmt::E8)?,
             0xc8 => self.ext(ExtFmt::E16)?,
             0xc9 => self.ext(ExtFmt::E32)?,
             0xca => MVal::F32(self.r.f32_be("float32")?),
             0xcb => MVal::F64(self.r.f64_be("float64")?),
-            0xcc => MVal::Int {
-                fmt: IntFmt::U8,
-                v: self.r.u8("uint8")? as i128,
-            },
-            0xcd => MVal::Int {
-                fmt: IntFmt::U16,
-                v: self.r.u16_be("uint16")? as i128,
-            },
-            0xce => MVal::Int {
-                fmt: IntFmt::U32,
-                v: self.r.u32_be("uint32")? as i128,
-            },
-            0xcf => MVal::Int {
-                fmt: IntFmt::U64,
-                v: self.r.u64_be("uint64")? as i128,
-            },
-            0xd0 => MVal::Int {
-                fmt: IntFmt::I8,
-                v: self.r.i8("int8")? as i128,
-            },
-            0xd1 => MVal::Int {
-                fmt: IntFmt::I16,
-                v: self.r.i16_be("int16")? as i128,
-            },
-            0xd2 => MVal::Int {
-                fmt: IntFmt::I32,
-                v: self.r.i32_be("int32")? as i128,
-            },
-            0xd3 => MVal::Int {
-                fmt: IntFmt::I64,
-                v: self.r.i64_be("int64")? as i128,
-            },
+            0xcc => MVal::Int { fmt: IntFmt::U8, v: self.r.u8("uint8")? as i128 },
+            0xcd => MVal::Int { fmt: IntFmt::U16, v: self.r.u16_be("uint16")? as i128 },
+            0xce => MVal::Int { fmt: IntFmt::U32, v: self.r.u32_be("uint32")? as i128 },
+            0xcf => MVal::Int { fmt: IntFmt::U64, v: self.r.u64_be("uint64")? as i128 },
+            0xd0 => MVal::Int { fmt: IntFmt::I8, v: self.r.i8("int8")? as i128 },
+            0xd1 => MVal::Int { fmt: IntFmt::I16, v: self.r.i16_be("int16")? as i128 },
+            0xd2 => MVal::Int { fmt: IntFmt::I32, v: self.r.i32_be("int32")? as i128 },
+            0xd3 => MVal::Int { fmt: IntFmt::I64, v: self.r.i64_be("int64")? as i128 },
             0xd4 => self.ext(ExtFmt::Fix1)?,
             0xd5 => self.ext(ExtFmt::Fix2)?,
             0xd6 => self.ext(ExtFmt::Fix4)?,
@@ -326,15 +287,9 @@ impl<'a> Parser<'a> {
             0xd9..=0xdb => {
                 let fmt = [LenFmt::W8, LenFmt::W16, LenFmt::W32][(m - 0xd9) as usize];
                 let n = self.len(fmt, 0, "str length")?;
-                MVal::Str {
-                    fmt,
-                    raw: self.bytes(n, "str data")?,
-                }
+                MVal::Str { fmt, raw: self.bytes(n, "str data")? }
             }
-            0xe0..=0xff => MVal::Int {
-                fmt: IntFmt::NegFix,
-                v: (m as i8) as i128,
-            },
+            0xe0..=0xff => MVal::Int { fmt: IntFmt::NegFix, v: (m as i8) as i128 },
         })
     }
 }
@@ -344,10 +299,7 @@ fn parse_all(data: &[u8]) -> CodecResult<Vec<MVal>> {
     if data.is_empty() {
         return Err(CodecError::malformed(CODEC, 0, "empty input"));
     }
-    let mut p = Parser {
-        r: ByteReader::new(data, CODEC),
-        depth: 0,
-    };
+    let mut p = Parser { r: ByteReader::new(data, CODEC), depth: 0 };
     let mut values = Vec::new();
     while !p.r.is_empty() {
         values.push(p.value()?);
@@ -476,7 +428,10 @@ fn write_leaf(v: &MVal, out: &mut Vec<u8>) -> CodecResult<()> {
         }
         MVal::Ext { fmt, ty, data } => {
             if !fmt.fits(data.len()) {
-                return Err(CodecError::unsupported(CODEC, format!("ext data of {} bytes does not fit {fmt:?}", data.len())));
+                return Err(CodecError::unsupported(
+                    CODEC,
+                    format!("ext data of {} bytes does not fit {fmt:?}", data.len()),
+                ));
             }
             match fmt {
                 ExtFmt::Fix1 => out.push(0xd4),
@@ -642,10 +597,7 @@ fn build_array(a: &[Node], path: &mut NodePath) -> CodecResult<MVal> {
         items.push(build(child, path)?);
         path.pop();
     }
-    Ok(MVal::Array {
-        fmt: Family::Array.choose(None, items.len(), path)?,
-        items,
-    })
+    Ok(MVal::Array { fmt: Family::Array.choose(None, items.len(), path)?, items })
 }
 
 #[inline(never)]
@@ -657,10 +609,7 @@ fn build_map(m: &NodeMap, path: &mut NodePath) -> CodecResult<MVal> {
         entries.push((key, build(child, path)?));
         path.pop();
     }
-    Ok(MVal::Map {
-        fmt: Family::Map.choose(None, entries.len(), path)?,
-        entries,
-    })
+    Ok(MVal::Map { fmt: Family::Map.choose(None, entries.len(), path)?, entries })
 }
 
 #[inline(never)]
@@ -668,27 +617,22 @@ fn build_leaf(node: &Node, path: &mut NodePath) -> CodecResult<MVal> {
     Ok(match node {
         Node::Null => MVal::Nil,
         Node::Bool(b) => MVal::Bool(*b),
-        Node::I8(_) | Node::I16(_) | Node::I32(_) | Node::I64(_) | Node::U8(_) | Node::U16(_) | Node::U32(_) | Node::U64(_) => {
+        Node::I8(_)
+        | Node::I16(_)
+        | Node::I32(_)
+        | Node::I64(_)
+        | Node::U8(_)
+        | Node::U16(_)
+        | Node::U32(_)
+        | Node::U64(_) => {
             let v = int_value(node, path)?;
-            MVal::Int {
-                fmt: IntFmt::smallest(v),
-                v,
-            }
+            MVal::Int { fmt: IntFmt::smallest(v), v }
         }
         Node::F32(f) => MVal::F32(*f),
         Node::F64(f) => MVal::F64(*f),
-        Node::String(s) => MVal::Str {
-            fmt: Family::Str.choose(None, s.len(), path)?,
-            raw: s.as_bytes().to_vec(),
-        },
-        Node::Bytes(b) => MVal::Bin {
-            fmt: Family::Bin.choose(None, b.len(), path)?,
-            data: b.clone(),
-        },
-        Node::RawRegion(r) => MVal::Bin {
-            fmt: Family::Bin.choose(None, r.bytes.len(), path)?,
-            data: r.bytes.clone(),
-        },
+        Node::String(s) => MVal::Str { fmt: Family::Str.choose(None, s.len(), path)?, raw: s.as_bytes().to_vec() },
+        Node::Bytes(b) => MVal::Bin { fmt: Family::Bin.choose(None, b.len(), path)?, data: b.clone() },
+        Node::RawRegion(r) => MVal::Bin { fmt: Family::Bin.choose(None, r.bytes.len(), path)?, data: r.bytes.clone() },
         Node::Array(_) | Node::Map(_) => {
             return Err(CodecError::structure(CODEC, &*path, "container reached the leaf builder"));
         }
@@ -701,10 +645,7 @@ fn new_key(k: &str, all_int_keys: bool, path: &mut NodePath) -> CodecResult<MVal
     if all_int_keys {
         if let Ok(v) = k.parse::<i128>() {
             if (i64::MIN as i128..=u64::MAX as i128).contains(&v) {
-                return Ok(MVal::Int {
-                    fmt: IntFmt::smallest(v),
-                    v,
-                });
+                return Ok(MVal::Int { fmt: IntFmt::smallest(v), v });
             }
         }
     }
@@ -755,7 +696,12 @@ fn reconcile_array(fmt: &mut LenFmt, items: &mut Vec<MVal>, node: &Node, path: &
 }
 
 #[inline(never)]
-fn reconcile_simple_map(fmt: &mut LenFmt, entries: &mut Vec<(MVal, MVal)>, node: &Node, path: &mut NodePath) -> CodecResult<()> {
+fn reconcile_simple_map(
+    fmt: &mut LenFmt,
+    entries: &mut Vec<(MVal, MVal)>,
+    node: &Node,
+    path: &mut NodePath,
+) -> CodecResult<()> {
     let Node::Map(m) = node else {
         return Err(mismatch(path, "map", node));
     };
@@ -783,7 +729,12 @@ fn reconcile_simple_map(fmt: &mut LenFmt, entries: &mut Vec<(MVal, MVal)>, node:
 }
 
 #[inline(never)]
-fn reconcile_pair_map(fmt: &mut LenFmt, entries: &mut Vec<(MVal, MVal)>, node: &Node, path: &mut NodePath) -> CodecResult<()> {
+fn reconcile_pair_map(
+    fmt: &mut LenFmt,
+    entries: &mut Vec<(MVal, MVal)>,
+    node: &Node,
+    path: &mut NodePath,
+) -> CodecResult<()> {
     let Node::Array(a) = node else {
         return Err(mismatch(path, "array of {key, value} entries", node));
     };
@@ -878,7 +829,9 @@ fn reconcile_leaf(v: &mut MVal, node: &Node, path: &mut NodePath) -> CodecResult
             *data = d;
             Ok(())
         }
-        MVal::Array { .. } | MVal::Map { .. } => Err(CodecError::structure(CODEC, &*path, "container reached the leaf editor")),
+        MVal::Array { .. } | MVal::Map { .. } => {
+            Err(CodecError::structure(CODEC, &*path, "container reached the leaf editor"))
+        }
     }
 }
 
@@ -970,10 +923,7 @@ impl Document for MsgPackDocument {
 
     fn notes(&self) -> Vec<String> {
         if self.is_multi() {
-            vec![format!(
-                "{} concatenated top-level MessagePack values (projected as an array)",
-                self.values.len()
-            )]
+            vec![format!("{} concatenated top-level MessagePack values (projected as an array)", self.values.len())]
         } else {
             vec!["single MessagePack value".into()]
         }
@@ -1043,7 +993,10 @@ mod tests {
     #[test]
     fn markers_roundtrip() {
         // {"a": uint32 5, "b": str16 "hi", "c": [nil, true, -3, int64 -1]}
-        let mut d = vec![0x83, 0xa1, b'a', 0xce, 0, 0, 0, 5, 0xa1, b'b', 0xda, 0, 2, b'h', b'i', 0xa1, b'c', 0x94, 0xc0, 0xc3, 0xfd, 0xd3];
+        let mut d = vec![
+            0x83, 0xa1, b'a', 0xce, 0, 0, 0, 5, 0xa1, b'b', 0xda, 0, 2, b'h', b'i', 0xa1, b'c', 0x94, 0xc0, 0xc3, 0xfd,
+            0xd3,
+        ];
         d.extend_from_slice(&(-1i64).to_be_bytes());
         let doc = rt(&d);
         assert_eq!(
@@ -1051,10 +1004,7 @@ mod tests {
             Node::map_from([
                 ("a", Node::I64(5)),
                 ("b", Node::String("hi".into())),
-                (
-                    "c",
-                    Node::Array(vec![Node::Null, Node::Bool(true), Node::I64(-3), Node::I64(-1)])
-                ),
+                ("c", Node::Array(vec![Node::Null, Node::Bool(true), Node::I64(-3), Node::I64(-1)])),
             ])
         );
         assert_eq!(MsgPackCodec.detect(&d, &DetectContext::default()), 70);
@@ -1064,11 +1014,9 @@ mod tests {
     fn edit_keeps_marker_or_grows() {
         let d = vec![0x82, 0xa1, b'a', 0xd1, 0, 5, 0xa1, b's', 0xd9, 1, b'x'];
         let mut doc = rt(&d);
-        doc.apply_ast(&Node::map_from([("a", Node::I64(300)), ("s", Node::String("yy".into()))]))
-            .unwrap();
+        doc.apply_ast(&Node::map_from([("a", Node::I64(300)), ("s", Node::String("yy".into()))])).unwrap();
         assert_eq!(doc.encode().unwrap(), vec![0x82, 0xa1, b'a', 0xd1, 1, 44, 0xa1, b's', 0xd9, 2, b'y', b'y']);
-        doc.apply_ast(&Node::map_from([("a", Node::I64(70000)), ("s", Node::String("yy".into()))]))
-            .unwrap();
+        doc.apply_ast(&Node::map_from([("a", Node::I64(70000)), ("s", Node::String("yy".into()))])).unwrap();
         assert_eq!(&doc.encode().unwrap()[3..8], &[0xce, 0, 1, 0x11, 0x70]);
         doc.apply_ast(&Node::map_from([
             ("a", Node::I64(-1)),

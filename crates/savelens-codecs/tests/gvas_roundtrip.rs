@@ -459,11 +459,17 @@ fn primitive_and_string_arrays_can_change_length() {
     let bytes = build_save(None);
     let pipeline = EnvelopePipeline::builtin();
     let mut s = pipeline.open(&bytes, &ctx()).unwrap();
-    s.set(&p("Scores"), Node::Array(vec![Node::I32(1), Node::I32(2), Node::I32(3), Node::I32(4), Node::I32(5), Node::I32(6)]))
-        .unwrap();
+    s.set(
+        &p("Scores"),
+        Node::Array(vec![Node::I32(1), Node::I32(2), Node::I32(3), Node::I32(4), Node::I32(5), Node::I32(6)]),
+    )
+    .unwrap();
     s.set(&p("Tags"), Node::Array(vec![Node::String("only".into())])).unwrap();
-    s.set(&p("Completed"), Node::Array(vec![Node::String("QuestA".into()), Node::String("QuestB".into()), Node::String("QuestC".into())]))
-        .unwrap();
+    s.set(
+        &p("Completed"),
+        Node::Array(vec![Node::String("QuestA".into()), Node::String("QuestB".into()), Node::String("QuestC".into())]),
+    )
+    .unwrap();
     let out = s.encode_verified(&pipeline, &ctx()).unwrap();
     let re = assert_lossless(&out);
     let r = re.root();

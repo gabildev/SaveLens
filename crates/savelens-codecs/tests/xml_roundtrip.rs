@@ -114,7 +114,9 @@ fn value_edits_escape_and_preserve_everything_else() {
     // Untouched parts are byte-identical.
     assert!(text.starts_with("<?xml version=\"1.0\" encoding=\"utf-8\" standalone=\"yes\"?>\r\n<!-- RPG save slot 2 -->\r\n<!DOCTYPE SaveGame [\r\n"));
     assert!(text.contains("  <!-- quest log -->\r\n"));
-    assert!(text.contains("<Note>Made by &studio; &#169; 2024 &#x2764;</Note>\r\n  <?game-hint skip?>\r\n</SaveGame>\r\n"));
+    assert!(
+        text.contains("<Note>Made by &studio; &#169; 2024 &#x2764;</Note>\r\n  <?game-hint skip?>\r\n</SaveGame>\r\n")
+    );
 }
 
 #[test]

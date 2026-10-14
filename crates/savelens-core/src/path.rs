@@ -172,9 +172,7 @@ impl NodePath {
 fn key_needs_quoting(key: &str) -> bool {
     key.is_empty()
         || key == "$"
-        || key
-            .chars()
-            .any(|c| matches!(c, '.' | '[' | ']' | '"' | '\\') || c.is_whitespace() || c.is_control())
+        || key.chars().any(|c| matches!(c, '.' | '[' | ']' | '"' | '\\') || c.is_whitespace() || c.is_control())
 }
 
 fn write_quoted(f: &mut fmt::Formatter<'_>, key: &str) -> fmt::Result {
@@ -223,11 +221,7 @@ struct Parser<'a> {
 impl<'a> Parser<'a> {
     fn err(&self, reason: impl Into<String>) -> CoreError {
         let byte = self.chars.get(self.pos).map(|(b, _)| *b).unwrap_or(self.input.len());
-        CoreError::PathParse {
-            input: self.input.to_string(),
-            position: byte,
-            reason: reason.into(),
-        }
+        CoreError::PathParse { input: self.input.to_string(), position: byte, reason: reason.into() }
     }
 
     fn peek(&self) -> Option<char> {
@@ -285,10 +279,9 @@ impl<'a> Parser<'a> {
                                         _ => return Err(self.err("invalid \\u{..} escape")),
                                     }
                                 }
-                                let code = u32::from_str_radix(&hex, 16)
-                                    .map_err(|_| self.err("invalid \\u{..} escape"))?;
-                                let c = char::from_u32(code)
-                                    .ok_or_else(|| self.err("invalid unicode scalar"))?;
+                                let code =
+                                    u32::from_str_radix(&hex, 16).map_err(|_| self.err("invalid \\u{..} escape"))?;
+                                let c = char::from_u32(code).ok_or_else(|| self.err("invalid unicode scalar"))?;
                                 s.push(c);
                             }
                             _ => return Err(self.err("unknown escape")),
@@ -314,9 +307,7 @@ impl<'a> Parser<'a> {
                 if self.bump() != Some(']') {
                     return Err(self.err("expected `]` after index"));
                 }
-                let n = digits
-                    .parse::<usize>()
-                    .map_err(|_| self.err("index too large"))?;
+                let n = digits.parse::<usize>().map_err(|_| self.err("index too large"))?;
                 Ok(PathSeg::Index(n))
             }
             _ => Err(self.err("expected index or quoted key after `[`")),
@@ -334,11 +325,7 @@ impl FromStr for NodePath {
         }
         let body = trimmed.strip_prefix("$.").unwrap_or(trimmed);
         let body = if body.starts_with("$[") { &body[1..] } else { body };
-        let mut p = Parser {
-            input: body,
-            chars: body.char_indices().collect(),
-            pos: 0,
-        };
+        let mut p = Parser { input: body, chars: body.char_indices().collect(), pos: 0 };
         let mut segs = Vec::new();
         let mut first = true;
         while let Some(c) = p.peek() {

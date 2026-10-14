@@ -314,12 +314,8 @@ fn multiple_top_level_values() {
 
 #[test]
 fn gzip_wrapped_msgpack_edit() {
-    let file = StreamParams::Gzip {
-        header: vec![0x1f, 0x8b, 8, 0, 0, 0, 0, 0, 0, 3],
-        level: 6,
-    }
-    .compress(&save())
-    .unwrap();
+    let file =
+        StreamParams::Gzip { header: vec![0x1f, 0x8b, 8, 0, 0, 0, 0, 0, 0, 3], level: 6 }.compress(&save()).unwrap();
     let ctx = DetectContext::default();
     let pipeline = EnvelopePipeline::builtin();
     let mut s = pipeline.open(&file, &ctx).unwrap();

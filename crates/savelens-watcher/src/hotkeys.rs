@@ -56,7 +56,8 @@ pub fn parse_bindings(cfg: &HotkeyConfig) -> EngineResult<Vec<(HotkeyAction, Hot
         if text.trim().is_empty() {
             continue;
         }
-        let hk = HotKey::from_str(text).map_err(|e| EngineError::Hotkeys(format!("{}: `{text}`: {e}", action.label())))?;
+        let hk =
+            HotKey::from_str(text).map_err(|e| EngineError::Hotkeys(format!("{}: `{text}`: {e}", action.label())))?;
         if out.iter().any(|(_, h, _): &(HotkeyAction, HotKey, String)| h.id() == hk.id()) {
             return Err(EngineError::Hotkeys(format!("`{text}` is bound twice")));
         }
@@ -161,9 +162,9 @@ impl Drop for HotkeyService {
 fn display_available() -> EngineResult<()> {
     match std::env::var_os("DISPLAY") {
         Some(d) if !d.is_empty() => Ok(()),
-        _ => Err(EngineError::Hotkeys(
-            "no X11 display (DISPLAY is not set); global hotkeys need X11 or XWayland".into(),
-        )),
+        _ => {
+            Err(EngineError::Hotkeys("no X11 display (DISPLAY is not set); global hotkeys need X11 or XWayland".into()))
+        }
     }
 }
 
@@ -174,7 +175,9 @@ fn display_available() -> EngineResult<()> {
 
 #[cfg(windows)]
 fn pump_windows_messages() {
-    use windows_sys::Win32::UI::WindowsAndMessaging::{DispatchMessageW, PeekMessageW, TranslateMessage, MSG, PM_REMOVE};
+    use windows_sys::Win32::UI::WindowsAndMessaging::{
+        DispatchMessageW, PeekMessageW, TranslateMessage, MSG, PM_REMOVE,
+    };
     // SAFETY: standard Win32 message pump on the thread that registered the
     // hotkeys; `msg` is a plain-old-data out parameter.
     unsafe {
@@ -208,20 +211,11 @@ mod tests {
 
     #[test]
     fn invalid_and_duplicate_bindings() {
-        let cfg = HotkeyConfig {
-            quick_snapshot: "ctrl+shift+NotAKey".into(),
-            ..HotkeyConfig::default()
-        };
+        let cfg = HotkeyConfig { quick_snapshot: "ctrl+shift+NotAKey".into(), ..HotkeyConfig::default() };
         assert!(parse_bindings(&cfg).is_err());
-        let cfg = HotkeyConfig {
-            quick_rollback: "ctrl+shift+F5".into(),
-            ..HotkeyConfig::default()
-        };
+        let cfg = HotkeyConfig { quick_rollback: "ctrl+shift+F5".into(), ..HotkeyConfig::default() };
         assert!(parse_bindings(&cfg).is_err());
-        let cfg = HotkeyConfig {
-            toggle_overlay: String::new(),
-            ..HotkeyConfig::default()
-        };
+        let cfg = HotkeyConfig { toggle_overlay: String::new(), ..HotkeyConfig::default() };
         assert_eq!(parse_bindings(&cfg).unwrap().len(), 4);
     }
 }

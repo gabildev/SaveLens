@@ -4,10 +4,7 @@ use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use crate::{
-    DiscoveryConfig, DiscoveryError, GameRuntime, HostPlatform, LocationSource, SaveLocation,
-    WindowsEnv,
-};
+use crate::{DiscoveryConfig, DiscoveryError, GameRuntime, HostPlatform, LocationSource, SaveLocation, WindowsEnv};
 
 /// Maximum number of files recorded per [`SaveLocation`].
 pub const MAX_FILES_PER_LOCATION: usize = 2000;
@@ -115,8 +112,7 @@ impl PathContext {
 
     /// Adds a heuristic-specific placeholder. Values are literal (they get glob-escaped).
     pub(crate) fn with_extra(mut self, name: &str, value: &str) -> Self {
-        self.extras
-            .push((name.to_string(), vec![value.to_string()]));
+        self.extras.push((name.to_string(), vec![value.to_string()]));
         self
     }
 
@@ -145,18 +141,13 @@ impl PathContext {
             "winAppData" => win.map(|w| lit(&w.app_data)),
             "winLocalAppData" => win.map(|w| lit(&w.local_app_data)),
             "winLocalAppDataLow" => win.map(|w| lit(&w.local_app_data_low)),
-            "winDocuments" => win.map(|w| {
-                w.documents
-                    .iter()
-                    .map(|d| glob::Pattern::escape(&d.to_string_lossy()))
-                    .collect()
-            }),
+            "winDocuments" => {
+                win.map(|w| w.documents.iter().map(|d| glob::Pattern::escape(&d.to_string_lossy())).collect())
+            }
             "winSavedGames" => win.map(|w| lit(&w.saved_games)),
             "winPublic" => win.map(|w| lit(&w.public)),
             other => match self.extras.iter().find(|(k, _)| k == other) {
-                Some((_, values)) => {
-                    Some(values.iter().map(|v| glob::Pattern::escape(v)).collect())
-                }
+                Some((_, values)) => Some(values.iter().map(|v| glob::Pattern::escape(v)).collect()),
                 None => {
                     return Err(DiscoveryError::Glob {
                         pattern: format!("<{other}>"),
@@ -232,9 +223,7 @@ pub(crate) fn validate_template(template: &str, extra: &[&str]) -> Result<(), St
         }
         rest = &rest[start + len + 1..];
     }
-    glob::Pattern::new(template)
-        .map(|_| ())
-        .map_err(|e| format!("invalid glob `{template}`: {e}"))
+    glob::Pattern::new(template).map(|_| ()).map_err(|e| format!("invalid glob `{template}`: {e}"))
 }
 
 fn glob_dirs(pattern: &str) -> Result<Vec<PathBuf>, DiscoveryError> {
@@ -243,16 +232,11 @@ fn glob_dirs(pattern: &str) -> Result<Vec<PathBuf>, DiscoveryError> {
         require_literal_separator: true,
         require_literal_leading_dot: false,
     };
-    let paths = glob::glob_with(pattern, opts).map_err(|e| DiscoveryError::Glob {
-        pattern: pattern.to_string(),
-        message: e.to_string(),
-    })?;
+    let paths = glob::glob_with(pattern, opts)
+        .map_err(|e| DiscoveryError::Glob { pattern: pattern.to_string(), message: e.to_string() })?;
     // Unreadable entries are skipped: the glob walks user directories that may contain
     // folders we have no permission to list.
-    Ok(paths
-        .filter_map(Result::ok)
-        .filter(|p| p.is_dir())
-        .collect())
+    Ok(paths.filter_map(Result::ok).filter(|p| p.is_dir()).collect())
 }
 
 /// Builds a [`SaveLocation`] for an existing `root`, collecting matching files.
@@ -262,12 +246,7 @@ pub(crate) fn make_location(
     source: LocationSource,
 ) -> Result<SaveLocation, DiscoveryError> {
     let files = collect_files(&root, &patterns)?;
-    Ok(SaveLocation {
-        root,
-        patterns,
-        source,
-        files,
-    })
+    Ok(SaveLocation { root, patterns, source, files })
 }
 
 /// Appends locations whose root is not yet present.
@@ -286,12 +265,7 @@ pub(crate) fn push_unique(into: &mut Vec<SaveLocation>, new: Vec<SaveLocation>) 
 pub fn collect_files(root: &Path, patterns: &[String]) -> Result<Vec<PathBuf>, DiscoveryError> {
     let compiled = patterns
         .iter()
-        .map(|p| {
-            glob::Pattern::new(p).map_err(|e| DiscoveryError::Glob {
-                pattern: p.clone(),
-                message: e.to_string(),
-            })
-        })
+        .map(|p| glob::Pattern::new(p).map_err(|e| DiscoveryError::Glob { pattern: p.clone(), message: e.to_string() }))
         .collect::<Result<Vec<_>, _>>()?;
     let opts = glob::MatchOptions {
         case_sensitive: true,
@@ -299,10 +273,7 @@ pub fn collect_files(root: &Path, patterns: &[String]) -> Result<Vec<PathBuf>, D
         require_literal_leading_dot: false,
     };
     let matches = |rel: &str, name: &str| {
-        compiled.is_empty()
-            || compiled
-                .iter()
-                .any(|p| p.matches_with(rel, opts) || p.matches_with(name, opts))
+        compiled.is_empty() || compiled.iter().any(|p| p.matches_with(rel, opts) || p.matches_with(name, opts))
     };
 
     let mut out = Vec::new();
@@ -370,30 +341,16 @@ mod tests {
     fn expansion_native_vs_proton() {
         let home = Path::new("/h");
         let cfg = linux_cfg(home);
-        let native = PathContext::new(
-            &cfg,
-            &GameRuntime::Native,
-            Some(Path::new("/lib/common/G")),
-            "G",
-            None,
-        );
-        assert_eq!(
-            native.expand("<xdgConfig>/x").unwrap(),
-            vec!["/h/.config/x"]
-        );
+        let native = PathContext::new(&cfg, &GameRuntime::Native, Some(Path::new("/lib/common/G")), "G", None);
+        assert_eq!(native.expand("<xdgConfig>/x").unwrap(), vec!["/h/.config/x"]);
         assert!(native.expand("<winAppData>/x").unwrap().is_empty());
-        assert_eq!(
-            native.expand("<base>/<game>/s").unwrap(),
-            vec!["/lib/common/G/G/s"]
-        );
+        assert_eq!(native.expand("<base>/<game>/s").unwrap(), vec!["/lib/common/G/G/s"]);
         assert!(native.expand("<root>/userdata").unwrap().is_empty());
         assert!(native.expand("<bogus>").is_err());
 
         let proton = PathContext::new(
             &cfg,
-            &GameRuntime::Proton {
-                prefix: PathBuf::from("/p/pfx"),
-            },
+            &GameRuntime::Proton { prefix: PathBuf::from("/p/pfx") },
             None,
             "G[1]",
             Some(Path::new("/s")),
@@ -406,10 +363,7 @@ mod tests {
             ]
         );
         assert_eq!(proton.expand("<game>").unwrap(), vec!["G[[]1[]]"]);
-        assert_eq!(
-            proton.expand("<root>/userdata/<storeUserId>/1").unwrap(),
-            vec!["/s/userdata/*/1"]
-        );
+        assert_eq!(proton.expand("<root>/userdata/<storeUserId>/1").unwrap(), vec!["/s/userdata/*/1"]);
         assert!(proton.applies(PathOs::Windows));
         assert!(!proton.applies(PathOs::Linux));
     }

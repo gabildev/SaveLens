@@ -303,12 +303,7 @@ pub fn write_primitive(
         encoded.len()
     };
     let end = offset.checked_add(width).filter(|e| *e <= bytes.len()).ok_or_else(|| {
-        CoreError::RawOffsetOutOfRange {
-            path: region_name.to_string(),
-            offset: offset as u64,
-            width,
-            len: bytes.len(),
-        }
+        CoreError::RawOffsetOutOfRange { path: region_name.to_string(), offset: offset as u64, width, len: bytes.len() }
     })?;
     bytes[offset..end].copy_from_slice(&encoded);
     Ok(())
@@ -316,16 +311,12 @@ pub fn write_primitive(
 
 fn with_path(e: CoreError, path: &str) -> CoreError {
     match e {
-        CoreError::ValueOutOfRange { value, target, .. } => CoreError::ValueOutOfRange {
-            path: path.to_string(),
-            value,
-            target,
-        },
-        CoreError::TypeMismatch { expected, found, .. } => CoreError::TypeMismatch {
-            path: path.to_string(),
-            expected,
-            found,
-        },
+        CoreError::ValueOutOfRange { value, target, .. } => {
+            CoreError::ValueOutOfRange { path: path.to_string(), value, target }
+        }
+        CoreError::TypeMismatch { expected, found, .. } => {
+            CoreError::TypeMismatch { path: path.to_string(), expected, found }
+        }
         other => other,
     }
 }
@@ -370,12 +361,7 @@ impl RawRegion {
     pub fn new(bytes: Vec<u8>) -> Self {
         let strings = index_strings(&bytes, MIN_STRING_LEN);
         let endian_hint = guess_endianness(&bytes);
-        RawRegion {
-            bytes,
-            block_size: DEFAULT_BLOCK_SIZE,
-            strings,
-            endian_hint,
-        }
+        RawRegion { bytes, block_size: DEFAULT_BLOCK_SIZE, strings, endian_hint }
     }
 
     /// Re-indexes after the bytes changed.
@@ -540,7 +526,15 @@ mod tests {
         assert_eq!(read_ascii_decimal(&data, 13), Some((-20, 3)));
         write_primitive(&mut data, 5, ScanType::AsciiDecimal, Endianness::Little, ScalarValue::Int(9999), "r").unwrap();
         assert_eq!(&data, b"gold=9999;hp=-20;x");
-        assert!(write_primitive(&mut data, 5, ScanType::AsciiDecimal, Endianness::Little, ScalarValue::Int(10000), "r").is_err());
+        assert!(write_primitive(
+            &mut data,
+            5,
+            ScanType::AsciiDecimal,
+            Endianness::Little,
+            ScalarValue::Int(10000),
+            "r"
+        )
+        .is_err());
     }
 
     #[test]
@@ -573,10 +567,8 @@ mod tests {
         let mut bytes = vec![0u8; 16];
         bytes[4..8].copy_from_slice(&1500i32.to_le_bytes());
         let r = RawRegion::new(bytes);
-        let hits: Vec<_> = r
-            .primitives(ScanType::I32, Endianness::Little, 4)
-            .filter(|(_, v)| *v == ScalarValue::Int(1500))
-            .collect();
+        let hits: Vec<_> =
+            r.primitives(ScanType::I32, Endianness::Little, 4).filter(|(_, v)| *v == ScalarValue::Int(1500)).collect();
         assert_eq!(hits, vec![(4, ScalarValue::Int(1500))]);
     }
 

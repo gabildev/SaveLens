@@ -137,10 +137,7 @@ impl std::fmt::Debug for Engine {
 }
 
 fn mtime_ms(meta: &fs::Metadata) -> Option<i64> {
-    meta.modified()
-        .ok()
-        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-        .map(|d| d.as_millis() as i64)
+    meta.modified().ok().and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map(|d| d.as_millis() as i64)
 }
 
 /// True for raw locations addressing the whole payload (captured in raw
@@ -198,7 +195,10 @@ impl Engine {
     // ------------------------------------------------------------------
 
     /// Runs Steam / Proton / rules discovery.
-    pub fn discover(&self, cfg: &savelens_discovery::DiscoveryConfig) -> EngineResult<savelens_discovery::DiscoveryReport> {
+    pub fn discover(
+        &self,
+        cfg: &savelens_discovery::DiscoveryConfig,
+    ) -> EngineResult<savelens_discovery::DiscoveryReport> {
         savelens_discovery::discover(cfg).map_err(|e| EngineError::Discovery(e.to_string()))
     }
 
@@ -263,17 +263,15 @@ impl Engine {
 
     /// Files currently matching the game's patterns.
     pub fn tracked_files(&self, game: &GameRecord) -> EngineResult<Vec<TrackedFile>> {
-        let patterns: Vec<String> = if game.patterns.is_empty() {
-            vec!["**/*".to_string()]
-        } else {
-            game.patterns.clone()
-        };
+        let patterns: Vec<String> =
+            if game.patterns.is_empty() { vec!["**/*".to_string()] } else { game.patterns.clone() };
         let mut out: BTreeMap<String, TrackedFile> = BTreeMap::new();
         let max = self.config.max_file_size();
         for pat in patterns {
             let full = game.save_root.join(&pat);
             let pattern = full.to_string_lossy().to_string();
-            let entries = glob::glob(&pattern).map_err(|e| EngineError::Invalid(format!("bad pattern `{pat}`: {e}")))?;
+            let entries =
+                glob::glob(&pattern).map_err(|e| EngineError::Invalid(format!("bad pattern `{pat}`: {e}")))?;
             for entry in entries.flatten() {
                 let Ok(meta) = fs::metadata(&entry) else { continue };
                 if !meta.is_file() || meta.len() > max {
@@ -287,12 +285,7 @@ impl Engine {
                 }
                 out.insert(
                     rel_s.clone(),
-                    TrackedFile {
-                        rel_path: rel_s,
-                        abs_path: entry.clone(),
-                        size: meta.len(),
-                        mtime: mtime_ms(&meta),
-                    },
+                    TrackedFile { rel_path: rel_s, abs_path: entry.clone(), size: meta.len(), mtime: mtime_ms(&meta) },
                 );
             }
         }
@@ -338,12 +331,20 @@ impl Engine {
     }
 
     /// Semantic diff of two versions of a file.
-    pub fn semantic_diff(&self, game: &GameRecord, rel: &str, old: &[u8], new: &[u8]) -> (Option<SemanticDiff>, String, Vec<String>) {
+    pub fn semantic_diff(
+        &self,
+        game: &GameRecord,
+        rel: &str,
+        old: &[u8],
+        new: &[u8],
+    ) -> (Option<SemanticDiff>, String, Vec<String>) {
         let ctx = self.ctx_for(game, rel);
         let aliases = self.aliases_for(game.id, rel);
         let (a, b) = match (self.pipeline.open(old, &ctx), self.pipeline.open(new, &ctx)) {
             (Ok(a), Ok(b)) => (a, b),
-            (Err(e), _) | (_, Err(e)) => return (None, format!("{} bytes changed (unreadable: {e})", new.len()), Vec::new()),
+            (Err(e), _) | (_, Err(e)) => {
+                return (None, format!("{} bytes changed (unreadable: {e})", new.len()), Vec::new())
+            }
         };
         let (ra, rb) = if a.codec_id() == b.codec_id() {
             (a.root(), b.root())
@@ -379,11 +380,7 @@ impl Engine {
             }
             Some(old) => {
                 let (_, summary, lines) = self.semantic_diff(game, rel, old, new);
-                Changelog {
-                    rel_path: rel.to_string(),
-                    summary,
-                    lines,
-                }
+                Changelog { rel_path: rel.to_string(), summary, lines }
             }
         }
     }
@@ -417,22 +414,16 @@ impl Engine {
             let log = self.changelog(game, &rel, old.as_deref(), &bytes);
             summaries.push(if log.summary.is_empty() { rel.clone() } else { log.summary.clone() });
             logs.push(log);
-            file_changes.push(FileChange {
-                rel_path: rel,
-                content: Some(bytes),
-                mtime,
-            });
+            file_changes.push(FileChange { rel_path: rel, content: Some(bytes), mtime });
         }
         if file_changes.is_empty() {
             return Ok(None);
         }
         let summary = summaries.join("; ");
-        let commit = self
-            .store
-            .create_commit(game.id, &game.current_branch, &file_changes, kind, message, &summary, &logs)?;
+        let commit =
+            self.store.create_commit(game.id, &game.current_branch, &file_changes, kind, message, &summary, &logs)?;
         if let Some(c) = &commit {
-            self.store
-                .log_event(Some(game.id), "commit", &format!("#{} [{}] {}: {}", c.id, kind, message, summary))?;
+            self.store.log_event(Some(game.id), "commit", &format!("#{} [{}] {}: {}", c.id, kind, message, summary))?;
         }
         Ok(commit)
     }
@@ -449,7 +440,14 @@ impl Engine {
     }
 
     /// Commits one file's bytes (used by the watcher).
-    pub fn commit_file(&self, game_id: GameId, rel: &str, bytes: Vec<u8>, kind: CommitKind, message: &str) -> EngineResult<Option<CommitRecord>> {
+    pub fn commit_file(
+        &self,
+        game_id: GameId,
+        rel: &str,
+        bytes: Vec<u8>,
+        kind: CommitKind,
+        message: &str,
+    ) -> EngineResult<Option<CommitRecord>> {
         let game = self.store.game(game_id)?;
         let rel = savelens_cas::normalize_rel_path(rel)?;
         self.commit_changes(&game, vec![(rel, bytes, None)], kind, message)
@@ -491,9 +489,8 @@ impl Engine {
     /// Opens a file version through the codec pipeline.
     pub fn open_version(&self, game_id: GameId, rev: &str, rel: &str) -> EngineResult<OpenedSave> {
         let game = self.store.game(game_id)?;
-        let bytes = self
-            .read_version(&game, rev, rel)?
-            .ok_or_else(|| EngineError::NotFound(format!("{rel} at {rev}")))?;
+        let bytes =
+            self.read_version(&game, rev, rel)?.ok_or_else(|| EngineError::NotFound(format!("{rel} at {rev}")))?;
         Ok(self.pipeline.open(&bytes, &self.ctx_for(&game, rel))?)
     }
 
@@ -544,13 +541,7 @@ impl Engine {
                 },
                 (Some(a), Some(b)) => {
                     let (semantic, summary, lines) = self.semantic_diff(&game, &rel, &a, &b);
-                    FileDiff {
-                        rel_path: rel,
-                        status: FileStatus::Modified,
-                        summary,
-                        lines,
-                        semantic,
-                    }
+                    FileDiff { rel_path: rel, status: FileStatus::Modified, summary, lines, semantic }
                 }
                 (None, None) => continue,
             };
@@ -587,7 +578,8 @@ impl Engine {
         let mut changes = Vec::new();
         for f in self.store.commit_files(target)? {
             if let Some(sel) = files {
-                if !sel.iter().any(|s| savelens_cas::normalize_rel_path(s).ok().as_deref() == Some(f.rel_path.as_str())) {
+                if !sel.iter().any(|s| savelens_cas::normalize_rel_path(s).ok().as_deref() == Some(f.rel_path.as_str()))
+                {
                     continue;
                 }
             }
@@ -606,17 +598,16 @@ impl Engine {
         let commit = self
             .commit_changes(&game, changes, CommitKind::Restore, &format!("restored {rev} (#{target})"))?
             .map(|c| c.id);
-        Ok(CheckoutReport {
-            target,
-            written,
-            unchanged,
-            safety_tags: tags,
-            commit,
-        })
+        Ok(CheckoutReport { target, written, unchanged, safety_tags: tags, commit })
     }
 
     /// Creates a branch (from a revision or the current head).
-    pub fn create_branch(&self, game_id: GameId, name: &str, from: Option<&str>) -> EngineResult<savelens_cas::BranchRecord> {
+    pub fn create_branch(
+        &self,
+        game_id: GameId,
+        name: &str,
+        from: Option<&str>,
+    ) -> EngineResult<savelens_cas::BranchRecord> {
         let from_id = match from {
             Some(r) => Some(self.store.resolve_rev(game_id, r)?),
             None => None,
@@ -646,18 +637,21 @@ impl Engine {
             written.push(f.rel_path);
         }
         self.store.set_current_branch(game.id, name)?;
-        self.store
-            .log_event(Some(game.id), "branch", &format!("switched to `{name}` ({} file(s) written)", written.len()))?;
-        Ok(CheckoutReport {
-            target: head,
-            written,
-            unchanged,
-            safety_tags: tags,
-            commit: None,
-        })
+        self.store.log_event(
+            Some(game.id),
+            "branch",
+            &format!("switched to `{name}` ({} file(s) written)", written.len()),
+        )?;
+        Ok(CheckoutReport { target: head, written, unchanged, safety_tags: tags, commit: None })
     }
 
-    fn open_for_edit(&self, game: &GameRecord, rel: &str, allow_raw: bool, force_raw: bool) -> EngineResult<(PathBuf, Vec<u8>, DetectContext, OpenedSave)> {
+    fn open_for_edit(
+        &self,
+        game: &GameRecord,
+        rel: &str,
+        allow_raw: bool,
+        force_raw: bool,
+    ) -> EngineResult<(PathBuf, Vec<u8>, DetectContext, OpenedSave)> {
         let path = self.abs_path(game, rel)?;
         let bytes = fs::read(&path).map_err(|e| EngineError::io(&path, e))?;
         let ctx = self.ctx_for(game, rel);
@@ -668,12 +662,10 @@ impl Engine {
         let opened = match opened.edit_mode() {
             EditMode::Structural => opened,
             EditMode::RawInPlace if allow_raw => opened.into_raw_mode(),
-            EditMode::RawInPlace => {
-                return Err(EngineError::GateBlocked(format!(
-                    "{rel}: the {} codec does not reproduce the file bit for bit; enable raw in-place mode to edit offsets",
-                    opened.codec_id()
-                )))
-            }
+            EditMode::RawInPlace => return Err(EngineError::GateBlocked(format!(
+                "{rel}: the {} codec does not reproduce the file bit for bit; enable raw in-place mode to edit offsets",
+                opened.codec_id()
+            ))),
             EditMode::BackupRestoreOnly => {
                 return Err(EngineError::GateBlocked(format!(
                     "{rel}: round-trip failed ({:?}); only full backup/restore is allowed",
@@ -684,13 +676,15 @@ impl Engine {
         Ok((path, bytes, ctx, opened))
     }
 
-    fn finish_edit(&self, game: &GameRecord, rel: &str, session: EditSession, kind: CommitKind, reason: &str) -> EngineResult<EditReport> {
-        let EditSession {
-            path,
-            original,
-            ctx,
-            opened,
-        } = session;
+    fn finish_edit(
+        &self,
+        game: &GameRecord,
+        rel: &str,
+        session: EditSession,
+        kind: CommitKind,
+        reason: &str,
+    ) -> EngineResult<EditReport> {
+        let EditSession { path, original, ctx, opened } = session;
         let (path, original, ctx, opened) = (path.as_path(), original.as_slice(), &ctx, &opened);
         let mode = opened.edit_mode();
         let new = opened.encode_verified(&self.pipeline, ctx)?;
@@ -719,7 +713,13 @@ impl Engine {
     }
 
     /// Edits one value on disk (re-encrypting / re-compressing / re-signing).
-    pub fn edit_value(&self, game_id: GameId, rel: &str, target: &EditTarget, allow_raw: bool) -> EngineResult<EditReport> {
+    pub fn edit_value(
+        &self,
+        game_id: GameId,
+        rel: &str,
+        target: &EditTarget,
+        allow_raw: bool,
+    ) -> EngineResult<EditReport> {
         let game = self.store.game(game_id)?;
         let rel = savelens_cas::normalize_rel_path(rel)?;
         let force_raw = matches!(target, EditTarget::Location { location, .. } if is_payload_raw(location));
@@ -751,7 +751,14 @@ impl Engine {
     }
 
     /// Surgical cherry-pick of sub-trees from an older revision into the file on disk.
-    pub fn cherry_pick(&self, game_id: GameId, from_rev: &str, rel: &str, paths: &[NodePath], opts: &CherryPickOptions) -> EngineResult<EditReport> {
+    pub fn cherry_pick(
+        &self,
+        game_id: GameId,
+        from_rev: &str,
+        rel: &str,
+        paths: &[NodePath],
+        opts: &CherryPickOptions,
+    ) -> EngineResult<EditReport> {
         let game = self.store.game(game_id)?;
         let rel = savelens_cas::normalize_rel_path(rel)?;
         let source = self.root_at(game_id, from_rev, &rel)?;
@@ -782,7 +789,12 @@ impl Engine {
             if let Some(rel) = self.rel_path_for(&g, &report.path) {
                 if !report.removed {
                     let bytes = fs::read(&report.path).map_err(|e| EngineError::io(&report.path, e))?;
-                    self.commit_changes(&g, vec![(rel, bytes, None)], CommitKind::Restore, &format!("panic restore to {}", report.restored_tag))?;
+                    self.commit_changes(
+                        &g,
+                        vec![(rel, bytes, None)],
+                        CommitKind::Restore,
+                        &format!("panic restore to {}", report.restored_tag),
+                    )?;
                 }
                 break;
             }
@@ -836,33 +848,26 @@ impl Engine {
     pub fn set_cheat(&self, game_id: GameId, alias: &str, value: ScalarValue) -> EngineResult<EditReport> {
         let e = self.store.cheat_by_alias(game_id, alias)?;
         let allow_raw = matches!(e.location, Location::Raw { .. });
-        self.edit_value(
-            game_id,
-            &e.rel_path,
-            &EditTarget::Location {
-                location: e.location.clone(),
-                value,
-            },
-            allow_raw,
-        )
+        self.edit_value(game_id, &e.rel_path, &EditTarget::Location { location: e.location.clone(), value }, allow_raw)
     }
 
     /// Sets a freeze rule.
     pub fn freeze(&self, game_id: GameId, alias: &str, value: Option<ScalarValue>, enabled: bool) -> EngineResult<()> {
         let value = match value {
             Some(v) => Some(v),
-            None => self
-                .cheat_values(game_id)?
-                .into_iter()
-                .find(|c| c.entry.alias == alias)
-                .and_then(|c| c.current),
+            None => self.cheat_values(game_id)?.into_iter().find(|c| c.entry.alias == alias).and_then(|c| c.current),
         };
         Ok(self.store.set_freeze(game_id, alias, value, enabled)?)
     }
 
     /// Applies the frozen values of `rel` to `bytes`. Returns the new bytes and
     /// the applied aliases, or `None` when nothing had to change.
-    pub fn apply_trainer_bytes(&self, game: &GameRecord, rel: &str, bytes: &[u8]) -> EngineResult<Option<(Vec<u8>, Vec<String>)>> {
+    pub fn apply_trainer_bytes(
+        &self,
+        game: &GameRecord,
+        rel: &str,
+        bytes: &[u8],
+    ) -> EngineResult<Option<(Vec<u8>, Vec<String>)>> {
         let rules: Vec<CheatEntry> = self
             .store
             .cheats(game.id)?
@@ -918,24 +923,20 @@ impl Engine {
         let m = self.store.safe_write(Some(game.id), &path, &new, &format!("trainer: {}", applied.join(", ")))?;
         let elapsed_ms = start.elapsed().as_secs_f64() * 1000.0;
         let commit = self
-            .commit_changes(&game, vec![(rel.clone(), new, None)], CommitKind::Trainer, &format!("freeze-on-save: {}", applied.join(", ")))?
+            .commit_changes(
+                &game,
+                vec![(rel.clone(), new, None)],
+                CommitKind::Trainer,
+                &format!("freeze-on-save: {}", applied.join(", ")),
+            )?
             .map(|c| c.id);
-        Ok(Some(TrainerReport {
-            rel_path: rel,
-            applied,
-            elapsed_ms,
-            safety_tag: m.safety.tag,
-            commit,
-        }))
+        Ok(Some(TrainerReport { rel_path: rel, applied, elapsed_ms, safety_tag: m.safety.tag, commit }))
     }
 
     /// Opens an arbitrary file (not necessarily tracked) for inspection.
     pub fn inspect_path(&self, path: &Path) -> EngineResult<OpenedSave> {
         let bytes = fs::read(path).map_err(|e| EngineError::io(path, e))?;
-        let ctx = DetectContext {
-            file_name: path.file_name().map(|n| n.to_string_lossy().to_string()),
-            app_id: None,
-        };
+        let ctx = DetectContext { file_name: path.file_name().map(|n| n.to_string_lossy().to_string()), app_id: None };
         Ok(self.pipeline.open(&bytes, &ctx)?)
     }
 }

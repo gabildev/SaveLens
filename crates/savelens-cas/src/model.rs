@@ -16,10 +16,7 @@ pub type CommitId = i64;
 
 /// Milliseconds since the Unix epoch.
 pub fn now_ms() -> i64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_millis() as i64)
-        .unwrap_or(0)
+    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as i64).unwrap_or(0)
 }
 
 /// Human timestamp (`2026-10-14 17:03:12`) in local time.

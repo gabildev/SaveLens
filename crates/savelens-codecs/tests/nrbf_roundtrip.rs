@@ -86,7 +86,14 @@ impl W {
     }
     /// Class header for record 4/5: ClassInfo + MemberTypeInfo.
     /// `members` = (name, binary type, additional info writer).
-    fn class_header(&mut self, rtype: u8, id: i32, name: &str, members: &[(&str, u8, Extra)], library: Option<i32>) -> &mut Self {
+    fn class_header(
+        &mut self,
+        rtype: u8,
+        id: i32,
+        name: &str,
+        members: &[(&str, u8, Extra)],
+        library: Option<i32>,
+    ) -> &mut Self {
         self.u8(rtype).i32(id).str(name).i32(members.len() as i32);
         for (n, _, _) in members {
             self.str(n);
@@ -179,7 +186,7 @@ fn unity_save() -> Vec<u8> {
     w.u8(6).i32(11).str_wide("shield"); // non-minimal length prefix
     w.reference(3); // shares "Hero"
     w.u8(10); // ObjectNull
-    // List<string>
+              // List<string>
     w.class_header(
         4,
         8,
@@ -239,10 +246,7 @@ fn opens_losslessly_with_expected_projection() {
     assert_eq!(get("stats2.xp"), Node::I64(999));
     assert_eq!(get("stats2.speed"), Node::F64(2.5));
     assert_eq!(get("scores"), Node::Array(vec![Node::I32(10), Node::I32(20), Node::I32(30), Node::I32(40)]));
-    assert_eq!(
-        get("tags"),
-        Node::Array(vec![s("sword"), Node::Null, Node::Null, s("shield"), s("Hero"), Node::Null])
-    );
+    assert_eq!(get("tags"), Node::Array(vec![s("sword"), Node::Null, Node::Null, s("shield"), s("Hero"), Node::Null]));
     assert_eq!(root.get(&p("inventory").key("$type")), Some(&s(LIST_OF_STRING)));
     assert_eq!(get("inventory._items"), Node::Array(vec![s("potion"), s("elixir"), Node::Null, Node::Null]));
     assert_eq!(get("inventory._size"), Node::I32(2));
@@ -292,7 +296,8 @@ fn edits_values_and_reencodes() {
     expected.set(&p("flag"), Node::Bool(false), false).unwrap();
     assert_eq!(after, expected);
     // Length of the file grew exactly by the string growth (+ varint).
-    let grow = "Sir Lancelot of Camelot, Knight of the Round Table".len() - "Hero".len() + "mega elixir".len() - "elixir".len();
+    let grow = "Sir Lancelot of Camelot, Knight of the Round Table".len() - "Hero".len() + "mega elixir".len()
+        - "elixir".len();
     assert_eq!(out.len(), bytes.len() + grow);
 
     // Shared string edited through its second occurrence changes both.
@@ -325,12 +330,8 @@ fn rejects_type_and_structure_changes() {
 #[test]
 fn gzip_wrapped_save() {
     let bytes = unity_save();
-    let gz = StreamParams::Gzip {
-        header: vec![0x1f, 0x8b, 8, 0, 0, 0, 0, 0, 0, 3],
-        level: 6,
-    }
-    .compress(&bytes)
-    .unwrap();
+    let gz =
+        StreamParams::Gzip { header: vec![0x1f, 0x8b, 8, 0, 0, 0, 0, 0, 0, 3], level: 6 }.compress(&bytes).unwrap();
     let pipeline = EnvelopePipeline::builtin();
     let ctx = DetectContext::for_file("save.dat");
     let mut opened = pipeline.open(&gz, &ctx).unwrap();

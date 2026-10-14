@@ -65,19 +65,12 @@ pub fn process_info(pid: u32) -> Option<ProcessInfo> {
 /// infrastructure processes are excluded, as is the current process.
 pub fn game_processes(cfg: &DiscoveryConfig, report: Option<&DiscoveryReport>) -> Vec<GameProcess> {
     let installs: Vec<(PathBuf, u32)> = match report {
-        Some(r) => r
-            .games
-            .iter()
-            .filter_map(|g| Some((g.install_dir.clone()?, g.app_id?)))
-            .collect(),
+        Some(r) => r.games.iter().filter_map(|g| Some((g.install_dir.clone()?, g.app_id?))).collect(),
         None => crate::steam::installed_apps(cfg),
     };
     let own = std::process::id();
-    let mut out: Vec<GameProcess> = imp::snapshots()
-        .into_iter()
-        .filter(|s| s.pid != own)
-        .filter_map(|s| classify(&s, &installs))
-        .collect();
+    let mut out: Vec<GameProcess> =
+        imp::snapshots().into_iter().filter(|s| s.pid != own).filter_map(|s| classify(&s, &installs)).collect();
     out.sort_by_key(|p| p.pid);
     out
 }
@@ -154,25 +147,16 @@ fn file_name_of(s: &str) -> &str {
 }
 
 fn env_app_id(environ: &[String]) -> Option<u32> {
-    ["SteamAppId=", "SteamGameId=", "STEAM_COMPAT_APP_ID="]
-        .iter()
-        .find_map(|k| {
-            environ
-                .iter()
-                .find_map(|e| e.strip_prefix(k))
-                .and_then(|v| v.trim().parse::<u32>().ok())
-                .filter(|id| *id != 0)
-        })
+    ["SteamAppId=", "SteamGameId=", "STEAM_COMPAT_APP_ID="].iter().find_map(|k| {
+        environ.iter().find_map(|e| e.strip_prefix(k)).and_then(|v| v.trim().parse::<u32>().ok()).filter(|id| *id != 0)
+    })
 }
 
 fn app_id_for_path(path: &str, installs: &[(PathBuf, u32)]) -> Option<u32> {
     let mut best: Option<(usize, u32)> = None;
     for (dir, id) in installs {
         let id = *id;
-        let dir_s = dir
-            .to_string_lossy()
-            .replace('\\', "/")
-            .to_ascii_lowercase();
+        let dir_s = dir.to_string_lossy().replace('\\', "/").to_ascii_lowercase();
         let p = path.replace('\\', "/").to_ascii_lowercase();
         if p.starts_with(&format!("{}/", dir_s.trim_end_matches('/')))
             && !matches!(best, Some((l, _)) if l >= dir_s.len())
@@ -191,11 +175,7 @@ pub(crate) fn classify(s: &ProcSnapshot, installs: &[(PathBuf, u32)]) -> Option<
         return None;
     }
     let env_id = env_app_id(&s.environ);
-    let exe_args: Vec<&String> = s
-        .cmdline
-        .iter()
-        .filter(|a| a.to_ascii_lowercase().ends_with(".exe"))
-        .collect();
+    let exe_args: Vec<&String> = s.cmdline.iter().filter(|a| a.to_ascii_lowercase().ends_with(".exe")).collect();
 
     let mut reasons = Vec::new();
     let mut app_id = None;
@@ -209,27 +189,16 @@ pub(crate) fn classify(s: &ProcSnapshot, installs: &[(PathBuf, u32)]) -> Option<
         }
     }
     if !install_hit {
-        if let Some(c) = s
-            .cmdline
-            .iter()
-            .chain(exe_str.iter())
-            .find(|c| path_has_steamapps_common(c))
-        {
-            reasons.push(format!(
-                "executable under steamapps/common ({})",
-                file_name_of(c)
-            ));
+        if let Some(c) = s.cmdline.iter().chain(exe_str.iter()).find(|c| path_has_steamapps_common(c)) {
+            reasons.push(format!("executable under steamapps/common ({})", file_name_of(c)));
         }
     }
     let wine_loader = WINE_LOADERS.contains(&exe_name) || WINE_LOADERS.contains(&arg0_name);
     if let Some(first_exe) = exe_args.first() {
-        let runs_exe = arg0_name.to_ascii_lowercase().ends_with(".exe")
-            || s.name.to_ascii_lowercase().ends_with(".exe");
+        let runs_exe =
+            arg0_name.to_ascii_lowercase().ends_with(".exe") || s.name.to_ascii_lowercase().ends_with(".exe");
         if wine_loader || runs_exe {
-            reasons.push(format!(
-                "Wine/Proton process running {}",
-                file_name_of(first_exe)
-            ));
+            reasons.push(format!("Wine/Proton process running {}", file_name_of(first_exe)));
         }
     } else if wine_loader && env_id.is_some() {
         reasons.push("Wine/Proton loader".to_string());
@@ -239,10 +208,7 @@ pub(crate) fn classify(s: &ProcSnapshot, installs: &[(PathBuf, u32)]) -> Option<
         // scripts); require it to be combined with an executable-looking command line.
         let looks_like_game = !reasons.is_empty()
             || !exe_args.is_empty()
-            || !matches!(
-                exe_name,
-                "sh" | "bash" | "dash" | "python3" | "python" | "env" | "sleep"
-            );
+            || !matches!(exe_name, "sh" | "bash" | "dash" | "python3" | "python" | "env" | "sleep");
         if looks_like_game {
             reasons.push(format!("SteamAppId={id} in environment"));
         }
@@ -251,17 +217,8 @@ pub(crate) fn classify(s: &ProcSnapshot, installs: &[(PathBuf, u32)]) -> Option<
     if reasons.is_empty() {
         return None;
     }
-    let name = exe_args
-        .first()
-        .map(|a| file_name_of(a).to_string())
-        .unwrap_or_else(|| s.name.clone());
-    Some(GameProcess {
-        pid: s.pid,
-        name,
-        exe: s.exe.clone(),
-        app_id,
-        reason: reasons.join("; "),
-    })
+    let name = exe_args.first().map(|a| file_name_of(a).to_string()).unwrap_or_else(|| s.name.clone());
+    Some(GameProcess { pid: s.pid, name, exe: s.exe.clone(), app_id, reason: reasons.join("; ") })
 }
 
 #[cfg(target_os = "linux")]
@@ -274,18 +231,13 @@ mod imp {
         let Ok(rd) = fs::read_dir("/proc") else {
             return Vec::new();
         };
-        let mut v: Vec<u32> = rd
-            .filter_map(Result::ok)
-            .filter_map(|e| e.file_name().to_str()?.parse().ok())
-            .collect();
+        let mut v: Vec<u32> = rd.filter_map(Result::ok).filter_map(|e| e.file_name().to_str()?.parse().ok()).collect();
         v.sort_unstable();
         v
     }
 
     fn comm(pid: u32) -> Option<String> {
-        fs::read_to_string(format!("/proc/{pid}/comm"))
-            .ok()
-            .map(|s| s.trim_end().to_string())
+        fs::read_to_string(format!("/proc/{pid}/comm")).ok().map(|s| s.trim_end().to_string())
     }
 
     fn exe(pid: u32) -> Option<PathBuf> {
@@ -335,15 +287,9 @@ mod imp {
         let target = fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
         let mut out = Vec::new();
         for pid in pids() {
-            let holds = fds(pid)
-                .into_iter()
-                .any(|(fd, t)| t == target && fd_is_writable(pid, &fd));
+            let holds = fds(pid).into_iter().any(|(fd, t)| t == target && fd_is_writable(pid, &fd));
             if holds {
-                out.push(ProcessInfo {
-                    pid,
-                    name: comm(pid).unwrap_or_default(),
-                    exe: exe(pid),
-                });
+                out.push(ProcessInfo { pid, name: comm(pid).unwrap_or_default(), exe: exe(pid) });
             }
         }
         out
@@ -357,9 +303,7 @@ mod imp {
         let mut out: Vec<PathBuf> = fds(pid)
             .into_iter()
             .filter(|(_, t)| t.is_absolute())
-            .filter(|(_, t)| {
-                !(t.starts_with("/dev") || t.starts_with("/proc") || t.starts_with("/sys"))
-            })
+            .filter(|(_, t)| !(t.starts_with("/dev") || t.starts_with("/proc") || t.starts_with("/sys")))
             .filter(|(fd, _)| fd_is_writable(pid, fd))
             .map(|(_, t)| t)
             .filter(|t| t.is_file())
@@ -371,11 +315,7 @@ mod imp {
 
     pub fn process_info(pid: u32) -> Option<ProcessInfo> {
         let name = comm(pid)?;
-        Some(ProcessInfo {
-            pid,
-            name,
-            exe: exe(pid),
-        })
+        Some(ProcessInfo { pid, name, exe: exe(pid) })
     }
 
     pub fn snapshots() -> Vec<ProcSnapshot> {
@@ -422,16 +362,8 @@ mod imp {
                 pid: p.pid().as_u32(),
                 name: p.name().to_string_lossy().into_owned(),
                 exe: p.exe().map(Path::to_path_buf),
-                cmdline: p
-                    .cmd()
-                    .iter()
-                    .map(|s| s.to_string_lossy().into_owned())
-                    .collect(),
-                environ: p
-                    .environ()
-                    .iter()
-                    .map(|s| s.to_string_lossy().into_owned())
-                    .collect(),
+                cmdline: p.cmd().iter().map(|s| s.to_string_lossy().into_owned()).collect(),
+                environ: p.environ().iter().map(|s| s.to_string_lossy().into_owned()).collect(),
             })
             .collect()
     }
@@ -458,11 +390,7 @@ mod imp {
     pub fn is_locked_for_write(path: &Path) -> bool {
         use std::os::windows::fs::OpenOptionsExt;
         use windows_sys::Win32::Foundation::ERROR_SHARING_VIOLATION;
-        match std::fs::OpenOptions::new()
-            .read(true)
-            .share_mode(0)
-            .open(path)
-        {
+        match std::fs::OpenOptions::new().read(true).share_mode(0).open(path) {
             Ok(_) => false,
             Err(e) => e.raw_os_error() == Some(ERROR_SHARING_VIOLATION as i32),
         }
@@ -490,12 +418,7 @@ mod tests {
 
     #[test]
     fn classification() {
-        let native = snap(
-            "Game",
-            "/lib/steamapps/common/G/Game.x86_64",
-            &["/lib/steamapps/common/G/Game.x86_64"],
-            &[],
-        );
+        let native = snap("Game", "/lib/steamapps/common/G/Game.x86_64", &["/lib/steamapps/common/G/Game.x86_64"], &[]);
         let g = classify(&native, &[]).unwrap();
         assert!(g.reason.contains("steamapps/common"));
         assert_eq!(g.app_id, None);
@@ -510,60 +433,17 @@ mod tests {
         assert_eq!(g.app_id, Some(413150));
         assert_eq!(g.name, "Game.exe");
         assert!(g.reason.contains("SteamAppId=413150"));
-        assert!(
-            g.reason.contains("steamapps/common (Game.exe)"),
-            "{}",
-            g.reason
-        );
-        assert!(!path_has_steamapps_common(
-            "/s/steamapps/common/Proton 9.0/files/bin/wine"
-        ));
-        assert!(!path_has_steamapps_common(
-            "/s/steamapps/common/SteamLinuxRuntime_sniper/x"
-        ));
+        assert!(g.reason.contains("steamapps/common (Game.exe)"), "{}", g.reason);
+        assert!(!path_has_steamapps_common("/s/steamapps/common/Proton 9.0/files/bin/wine"));
+        assert!(!path_has_steamapps_common("/s/steamapps/common/SteamLinuxRuntime_sniper/x"));
 
-        assert!(classify(
-            &snap(
-                "steam",
-                "/usr/lib/steam/steam",
-                &["steam"],
-                &["SteamAppId=1"]
-            ),
-            &[]
-        )
-        .is_none());
-        assert!(classify(
-            &snap(
-                "wineserver",
-                "/x/wineserver",
-                &["wineserver"],
-                &["SteamAppId=5"]
-            ),
-            &[]
-        )
-        .is_none());
+        assert!(classify(&snap("steam", "/usr/lib/steam/steam", &["steam"], &["SteamAppId=1"]), &[]).is_none());
+        assert!(classify(&snap("wineserver", "/x/wineserver", &["wineserver"], &["SteamAppId=5"]), &[]).is_none());
         assert!(classify(&snap("bash", "/usr/bin/bash", &["bash"], &[]), &[]).is_none());
-        assert!(classify(
-            &snap(
-                "bash",
-                "/usr/bin/bash",
-                &["bash", "-c", "x"],
-                &["SteamAppId=7"]
-            ),
-            &[]
-        )
-        .is_none());
-        assert!(classify(
-            &snap("vim", "/usr/bin/vim", &["vim", "notes.exe"], &[]),
-            &[]
-        )
-        .is_none());
+        assert!(classify(&snap("bash", "/usr/bin/bash", &["bash", "-c", "x"], &["SteamAppId=7"]), &[]).is_none());
+        assert!(classify(&snap("vim", "/usr/bin/vim", &["vim", "notes.exe"], &[]), &[]).is_none());
         let installs = vec![(PathBuf::from("/games/steamapps/common/G"), 99u32)];
-        let mapped = classify(
-            &snap("G", "/games/steamapps/common/G/bin/g", &["g"], &[]),
-            &installs,
-        )
-        .unwrap();
+        let mapped = classify(&snap("G", "/games/steamapps/common/G/bin/g", &["g"], &[]), &installs).unwrap();
         assert_eq!(mapped.app_id, Some(99));
         assert!(mapped.reason.contains("app 99"));
     }

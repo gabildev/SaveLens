@@ -107,7 +107,8 @@ fn full_workflow_through_the_binary() {
     }
 
     // Only the save file lives in the game directory.
-    let names: Vec<String> = fs::read_dir(&saves).unwrap().map(|e| e.unwrap().file_name().to_string_lossy().to_string()).collect();
+    let names: Vec<String> =
+        fs::read_dir(&saves).unwrap().map(|e| e.unwrap().file_name().to_string_lossy().to_string()).collect();
     assert_eq!(names, vec!["slot1.json".to_string()]);
 }
 

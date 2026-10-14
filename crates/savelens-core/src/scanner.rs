@@ -30,12 +30,7 @@ pub enum Location {
     /// A numeric leaf or numeric string of the AST.
     Ast { path: NodePath },
     /// A primitive inside a `Bytes`/`RawRegion` node.
-    Raw {
-        region: NodePath,
-        offset: u64,
-        ty: ScanType,
-        endian: Endianness,
-    },
+    Raw { region: NodePath, offset: u64, ty: ScanType, endian: Endianness },
 }
 
 impl Location {
@@ -43,12 +38,7 @@ impl Location {
     pub fn read(&self, root: &Node) -> Option<ScalarValue> {
         match self {
             Location::Ast { path } => read_ast_value(root.get(path)?),
-            Location::Raw {
-                region,
-                offset,
-                ty,
-                endian,
-            } => {
+            Location::Raw { region, offset, ty, endian } => {
                 let bytes = region_bytes(root.get(region)?)?;
                 read_primitive(bytes, usize::try_from(*offset).ok()?, *ty, *endian)
             }
@@ -64,12 +54,7 @@ impl Location {
                 *node = new;
                 Ok(())
             }
-            Location::Raw {
-                region,
-                offset,
-                ty,
-                endian,
-            } => {
+            Location::Raw { region, offset, ty, endian } => {
                 let node = root.resolve_mut(region)?;
                 let off = usize::try_from(*offset).map_err(|_| CoreError::RawOffsetOutOfRange {
                     path: region.to_string(),
@@ -120,12 +105,7 @@ impl fmt::Display for Location {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Location::Ast { path } => write!(f, "{path}"),
-            Location::Raw {
-                region,
-                offset,
-                ty,
-                endian,
-            } => {
+            Location::Raw { region, offset, ty, endian } => {
                 if ty.is_multibyte() {
                     write!(f, "{region}@{offset:#x}:{}{}", ty.name(), endian.suffix())
                 } else {
@@ -267,10 +247,7 @@ impl ScanFilter {
             return Ok(f);
         }
         if let Some((a, b)) = s.split_once("->") {
-            return Ok(ScanFilter::Transition {
-                from: ScalarValue::parse(a)?,
-                to: ScalarValue::parse(b)?,
-            });
+            return Ok(ScanFilter::Transition { from: ScalarValue::parse(a)?, to: ScalarValue::parse(b)? });
         }
         if let Some((a, b)) = s.split_once("..") {
             return Ok(ScanFilter::Between(ScalarValue::parse(a)?, ScalarValue::parse(b)?));
@@ -532,22 +509,14 @@ impl ScanSession {
                 Node::String(_) if cfg.scan_ast && cfg.scan_numeric_strings => {
                     if let Some(v) = read_ast_value(node) {
                         if filter_matches(filter, None, v, tol) {
-                            ast.push(AstCand {
-                                path: path.clone(),
-                                prev: v,
-                                cur: v,
-                            });
+                            ast.push(AstCand { path: path.clone(), prev: v, cur: v });
                         }
                     }
                 }
                 n if cfg.scan_ast && n.kind().is_numeric() => {
                     if let Some(v) = n.as_scalar() {
                         if filter_matches(filter, None, v, tol) {
-                            ast.push(AstCand {
-                                path: path.clone(),
-                                prev: v,
-                                cur: v,
-                            });
+                            ast.push(AstCand { path: path.clone(), prev: v, cur: v });
                         }
                     }
                 }
@@ -565,21 +534,13 @@ impl ScanSession {
             let id = self.region_id(&path);
             if matches!(filter, ScanFilter::Unknown) {
                 let words = bytes.len().div_ceil(64);
-                self.pending.push(PendingRegion {
-                    region: id,
-                    bytes,
-                    dirty: vec![0; words],
-                });
+                self.pending.push(PendingRegion { region: id, bytes, dirty: vec![0; words] });
             } else {
                 self.scan_region_values(id, &bytes, filter, budget)?;
             }
         }
         let remaining = self.candidate_count();
-        self.steps.push(ScanStep {
-            filter: filter.to_string(),
-            remaining,
-            snapshot_label: label.to_string(),
-        });
+        self.steps.push(ScanStep { filter: filter.to_string(), remaining, snapshot_label: label.to_string() });
         Ok(remaining)
     }
 
@@ -593,14 +554,7 @@ impl ScanSession {
                     }
                     let Some(v) = read_raw(bytes, off, ty, endian) else { continue };
                     if filter_matches(filter, None, v, tol) {
-                        self.raw.push(RawCand {
-                            region: id,
-                            offset: off as u64,
-                            ty,
-                            endian,
-                            prev: v,
-                            cur: v,
-                        });
+                        self.raw.push(RawCand { region: id, offset: off as u64, ty, endian, prev: v, cur: v });
                         if self.ast.len() + self.raw.len() > budget {
                             return Err(CoreError::TooManyCandidates { limit: budget });
                         }
@@ -628,11 +582,7 @@ impl ScanSession {
             let Some(node) = snapshot.get(&c.path) else { continue };
             let Some(v) = read_ast_value(node) else { continue };
             if filter_matches(filter, Some(c.cur), v, tol) {
-                ast.push(AstCand {
-                    path: c.path.clone(),
-                    prev: c.cur,
-                    cur: v,
-                });
+                ast.push(AstCand { path: c.path.clone(), prev: c.cur, cur: v });
             }
         }
 
@@ -680,10 +630,7 @@ impl ScanSession {
                         // Fast path: identical window can only match Unchanged-like filters.
                         let same_window = p.bytes[off..off + w] == new_bytes[off..off + w];
                         if same_window
-                            && matches!(
-                                filter,
-                                ScanFilter::Changed | ScanFilter::Increased | ScanFilter::Decreased
-                            )
+                            && matches!(filter, ScanFilter::Changed | ScanFilter::Increased | ScanFilter::Decreased)
                         {
                             continue;
                         }
@@ -693,14 +640,7 @@ impl ScanSession {
                         }
                         let Some(v) = read_raw(new_bytes, off, ty, endian) else { continue };
                         if filter_matches(filter, Some(old), v, tol) {
-                            raw.push(RawCand {
-                                region: p.region,
-                                offset: off as u64,
-                                ty,
-                                endian,
-                                prev: old,
-                                cur: v,
-                            });
+                            raw.push(RawCand { region: p.region, offset: off as u64, ty, endian, prev: old, cur: v });
                             if ast.len() + raw.len() > budget {
                                 return Err(CoreError::TooManyCandidates { limit: budget });
                             }
@@ -716,11 +656,7 @@ impl ScanSession {
         self.raw = raw;
         self.pending = pending;
         let remaining = self.candidate_count();
-        self.steps.push(ScanStep {
-            filter: filter.to_string(),
-            remaining,
-            snapshot_label: label.to_string(),
-        });
+        self.steps.push(ScanStep { filter: filter.to_string(), remaining, snapshot_label: label.to_string() });
         Ok(remaining)
     }
 
@@ -853,15 +789,10 @@ mod tests {
 
     #[test]
     fn raw_unaligned_and_decreased_by() {
-        let cfg = ScanConfig {
-            types: vec![ScanType::I32, ScanType::F32],
-            ..ScanConfig::default()
-        };
+        let cfg = ScanConfig { types: vec![ScanType::I32, ScanType::F32], ..ScanConfig::default() };
         let mut s = ScanSession::new(cfg);
         s.first_scan(&raw_save(1500, 100.0), &ScanFilter::Exact(ScalarValue::Int(1500)), "a").unwrap();
-        let n = s
-            .next_scan(&raw_save(1300, 100.0), &ScanFilter::DecreasedBy(ScalarValue::Int(200)), "b")
-            .unwrap();
+        let n = s.next_scan(&raw_save(1300, 100.0), &ScanFilter::DecreasedBy(ScalarValue::Int(200)), "b").unwrap();
         assert_eq!(n, 1);
         let c = &s.candidates(0, 10)[0];
         assert_eq!(c.current, ScalarValue::Int(1300));
@@ -870,11 +801,7 @@ mod tests {
 
     #[test]
     fn unknown_then_changed_then_unchanged() {
-        let cfg = ScanConfig {
-            types: vec![ScanType::I32],
-            alignment: Alignment::Unaligned,
-            ..ScanConfig::default()
-        };
+        let cfg = ScanConfig { types: vec![ScanType::I32], alignment: Alignment::Unaligned, ..ScanConfig::default() };
         let mut s = ScanSession::new(cfg);
         s.first_scan(&raw_save(1500, 100.0), &ScanFilter::Unknown, "a").unwrap();
         assert!(s.implicit_count() > 0);
@@ -930,11 +857,7 @@ mod tests {
 
     #[test]
     fn budget_enforced() {
-        let cfg = ScanConfig {
-            types: vec![ScanType::U8],
-            max_candidates: 10,
-            ..ScanConfig::default()
-        };
+        let cfg = ScanConfig { types: vec![ScanType::U8], max_candidates: 10, ..ScanConfig::default() };
         let mut s = ScanSession::new(cfg);
         let n = Node::Bytes(vec![0; 100]);
         let err = s.first_scan(&n, &ScanFilter::Exact(ScalarValue::Int(0)), "a").unwrap_err();
@@ -952,11 +875,8 @@ mod tests {
         };
         loc.write(&mut save, ScalarValue::Int(99999)).unwrap();
         assert_eq!(loc.read(&save), Some(ScalarValue::Int(99999)));
-        let pin = PinnedVariable {
-            alias: "Gold".into(),
-            location: loc.clone(),
-            frozen_value: Some(ScalarValue::Int(5)),
-        };
+        let pin =
+            PinnedVariable { alias: "Gold".into(), location: loc.clone(), frozen_value: Some(ScalarValue::Int(5)) };
         assert!(pin.apply_freeze(&mut save).unwrap());
         assert!(!pin.apply_freeze(&mut save).unwrap());
         assert_eq!(loc.read(&save), Some(ScalarValue::Int(5)));
@@ -973,10 +893,7 @@ mod tests {
         assert_eq!(ScanFilter::parse("-5").unwrap(), ScanFilter::Exact(ScalarValue::Int(-5)));
         assert_eq!(
             ScanFilter::parse("1500 -> 1300").unwrap(),
-            ScanFilter::Transition {
-                from: ScalarValue::Int(1500),
-                to: ScalarValue::Int(1300)
-            }
+            ScanFilter::Transition { from: ScalarValue::Int(1500), to: ScalarValue::Int(1300) }
         );
         assert_eq!(ScanFilter::parse("+300").unwrap(), ScanFilter::IncreasedBy(ScalarValue::Int(300)));
         assert_eq!(ScanFilter::parse("- 300").unwrap(), ScanFilter::DecreasedBy(ScalarValue::Int(300)));
@@ -1001,9 +918,7 @@ mod tests {
             ..ScanConfig::default()
         };
         let mut s = ScanSession::new(cfg);
-        let n = s
-            .first_scan(&Node::Bytes(b), &ScanFilter::Exact(ScalarValue::Int(4242)), "a")
-            .unwrap();
+        let n = s.first_scan(&Node::Bytes(b), &ScanFilter::Exact(ScalarValue::Int(4242)), "a").unwrap();
         assert_eq!(n, 1);
         assert_eq!(s.locations()[0].to_string(), "$@0x4:i32be");
     }
@@ -1011,14 +926,9 @@ mod tests {
     #[test]
     fn ascii_decimal_raw_scan() {
         let b = b"{gold:1500,hp:20}".to_vec();
-        let cfg = ScanConfig {
-            types: vec![ScanType::AsciiDecimal],
-            ..ScanConfig::default()
-        };
+        let cfg = ScanConfig { types: vec![ScanType::AsciiDecimal], ..ScanConfig::default() };
         let mut s = ScanSession::new(cfg);
-        let n = s
-            .first_scan(&Node::Bytes(b), &ScanFilter::Exact(ScalarValue::Int(1500)), "a")
-            .unwrap();
+        let n = s.first_scan(&Node::Bytes(b), &ScanFilter::Exact(ScalarValue::Int(1500)), "a").unwrap();
         assert_eq!(n, 1);
         let mut b2 = Node::Bytes(b"{gold:1300,hp:20}".to_vec());
         let n = s.next_scan(&b2, &ScanFilter::DecreasedBy(ScalarValue::Int(200)), "b").unwrap();

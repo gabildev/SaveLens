@@ -191,7 +191,8 @@ fn row_game(r: &rusqlite::Row<'_>) -> rusqlite::Result<GameRecord> {
     })
 }
 
-const GAME_COLS: &str = "id, name, app_id, save_root, patterns, runtime, created_at, current_branch, watch_enabled, trainer_enabled";
+const GAME_COLS: &str =
+    "id, name, app_id, save_root, patterns, runtime, created_at, current_branch, watch_enabled, trainer_enabled";
 
 fn row_commit(r: &rusqlite::Row<'_>) -> rusqlite::Result<CommitRecord> {
     let kind: String = r.get(4)?;
@@ -234,9 +235,7 @@ fn row_cheat(r: &rusqlite::Row<'_>) -> rusqlite::Result<(CheatEntry, String, Opt
             game_id: r.get(1)?,
             rel_path: r.get(2)?,
             alias: r.get(3)?,
-            location: Location::Ast {
-                path: savelens_core::NodePath::root(),
-            },
+            location: Location::Ast { path: savelens_core::NodePath::root() },
             frozen_value: None,
             freeze_enabled: r.get::<_, i64>(6)? != 0,
             created_at: r.get(7)?,
@@ -260,9 +259,8 @@ impl Store {
         conn.pragma_update(None, "synchronous", "NORMAL")?;
         conn.pragma_update(None, "foreign_keys", "ON")?;
         conn.execute_batch(SCHEMA)?;
-        let version: Option<String> = conn
-            .query_row("SELECT value FROM meta WHERE key = 'schema_version'", [], |r| r.get(0))
-            .optional()?;
+        let version: Option<String> =
+            conn.query_row("SELECT value FROM meta WHERE key = 'schema_version'", [], |r| r.get(0)).optional()?;
         match version.as_deref().map(str::parse::<i64>) {
             None => {
                 conn.execute(
@@ -284,12 +282,7 @@ impl Store {
                 let _ = fs::remove_file(entry.path());
             }
         }
-        Ok(Store {
-            root,
-            chunks,
-            staging,
-            inner: Arc::new(Mutex::new(Inner { conn })),
-        })
+        Ok(Store { root, chunks, staging, inner: Arc::new(Mutex::new(Inner { conn })) })
     }
 
     /// Opens the store at [`default_data_dir`].
@@ -313,10 +306,8 @@ impl Store {
 
     fn put_blob_tx(&self, tx: &Transaction<'_>, data: &[u8]) -> CasResult<String> {
         let hash = hash_hex(data);
-        let exists: bool = tx
-            .query_row("SELECT 1 FROM blobs WHERE hash = ?1", params![hash], |_| Ok(()))
-            .optional()?
-            .is_some();
+        let exists: bool =
+            tx.query_row("SELECT 1 FROM blobs WHERE hash = ?1", params![hash], |_| Ok(())).optional()?.is_some();
         if exists {
             return Ok(hash);
         }
@@ -324,10 +315,8 @@ impl Store {
         for (seq, s) in spans.iter().enumerate() {
             let chunk = &data[s.offset..s.offset + s.length];
             let ch = hash_hex(chunk);
-            let known: bool = tx
-                .query_row("SELECT 1 FROM chunks WHERE hash = ?1", params![ch], |_| Ok(()))
-                .optional()?
-                .is_some();
+            let known: bool =
+                tx.query_row("SELECT 1 FROM chunks WHERE hash = ?1", params![ch], |_| Ok(())).optional()?.is_some();
             if !known || !self.chunks.exists(&ch) {
                 let stored = self.chunks.write(&ch, chunk)?;
                 tx.execute(
@@ -335,10 +324,7 @@ impl Store {
                     params![ch, chunk.len() as i64, stored as i64],
                 )?;
             }
-            tx.execute(
-                "INSERT INTO blob_chunks(blob, seq, chunk) VALUES (?1, ?2, ?3)",
-                params![hash, seq as i64, ch],
-            )?;
+            tx.execute("INSERT INTO blob_chunks(blob, seq, chunk) VALUES (?1, ?2, ?3)", params![hash, seq as i64, ch])?;
         }
         // blob_chunks references blobs; insert the blob row first would violate
         // nothing either, but we insert it last so a partially written blob is
@@ -364,14 +350,9 @@ impl Store {
     pub fn get_blob(&self, hash: &str) -> CasResult<Vec<u8>> {
         let (size, chunks): (i64, Vec<(String, i64)>) = {
             let g = self.inner.lock();
-            let size: Option<i64> = g
-                .conn
-                .query_row("SELECT size FROM blobs WHERE hash = ?1", params![hash], |r| r.get(0))
-                .optional()?;
-            let size = size.ok_or_else(|| CasError::NotFound {
-                kind: "blob",
-                id: hash.to_string(),
-            })?;
+            let size: Option<i64> =
+                g.conn.query_row("SELECT size FROM blobs WHERE hash = ?1", params![hash], |r| r.get(0)).optional()?;
+            let size = size.ok_or_else(|| CasError::NotFound { kind: "blob", id: hash.to_string() })?;
             let mut stmt = g.conn.prepare(
                 "SELECT bc.chunk, c.size FROM blob_chunks bc JOIN chunks c ON c.hash = bc.chunk WHERE bc.blob = ?1 ORDER BY bc.seq",
             )?;
@@ -385,7 +366,10 @@ impl Store {
             out.extend_from_slice(&self.chunks.read(&ch, len.max(0) as usize)?);
         }
         if out.len() as i64 != size {
-            return Err(CasError::Integrity(format!("blob {hash} reassembled to {} bytes, expected {size}", out.len())));
+            return Err(CasError::Integrity(format!(
+                "blob {hash} reassembled to {} bytes, expected {size}",
+                out.len()
+            )));
         }
         let actual = hash_hex(&out);
         if actual != hash {
@@ -397,11 +381,7 @@ impl Store {
     /// True when a blob is stored.
     pub fn has_blob(&self, hash: &str) -> CasResult<bool> {
         let g = self.inner.lock();
-        Ok(g
-            .conn
-            .query_row("SELECT 1 FROM blobs WHERE hash = ?1", params![hash], |_| Ok(()))
-            .optional()?
-            .is_some())
+        Ok(g.conn.query_row("SELECT 1 FROM blobs WHERE hash = ?1", params![hash], |_| Ok(())).optional()?.is_some())
     }
 
     // ------------------------------------------------------------------
@@ -409,15 +389,21 @@ impl Store {
     // ------------------------------------------------------------------
 
     /// Registers a game (or returns the existing one for the same save root).
-    pub fn ensure_game(&self, name: &str, app_id: Option<u32>, save_root: &Path, patterns: &[String], runtime: &str) -> CasResult<GameRecord> {
+    pub fn ensure_game(
+        &self,
+        name: &str,
+        app_id: Option<u32>,
+        save_root: &Path,
+        patterns: &[String],
+        runtime: &str,
+    ) -> CasResult<GameRecord> {
         let root_s = save_root.to_string_lossy().to_string();
         let pats = serde_json::to_string(patterns)?;
         {
             let mut g = self.inner.lock();
             let tx = g.conn.transaction()?;
-            let existing: Option<GameId> = tx
-                .query_row("SELECT id FROM games WHERE save_root = ?1", params![root_s], |r| r.get(0))
-                .optional()?;
+            let existing: Option<GameId> =
+                tx.query_row("SELECT id FROM games WHERE save_root = ?1", params![root_s], |r| r.get(0)).optional()?;
             if existing.is_none() {
                 let now = now_ms();
                 tx.execute(
@@ -432,17 +418,13 @@ impl Store {
             }
             tx.commit()?;
         }
-        self.game_by_root(save_root)?.ok_or_else(|| CasError::NotFound {
-            kind: "game",
-            id: root_s,
-        })
+        self.game_by_root(save_root)?.ok_or_else(|| CasError::NotFound { kind: "game", id: root_s })
     }
 
     /// Looks a game up by save root.
     pub fn game_by_root(&self, save_root: &Path) -> CasResult<Option<GameRecord>> {
         let g = self.inner.lock();
-        Ok(g
-            .conn
+        Ok(g.conn
             .query_row(
                 &format!("SELECT {GAME_COLS} FROM games WHERE save_root = ?1"),
                 params![save_root.to_string_lossy().to_string()],
@@ -457,10 +439,7 @@ impl Store {
         g.conn
             .query_row(&format!("SELECT {GAME_COLS} FROM games WHERE id = ?1"), params![id], row_game)
             .optional()?
-            .ok_or_else(|| CasError::NotFound {
-                kind: "game",
-                id: id.to_string(),
-            })
+            .ok_or_else(|| CasError::NotFound { kind: "game", id: id.to_string() })
     }
 
     /// Finds a game by id, exact name, app id or name substring (case-insensitive).
@@ -478,10 +457,7 @@ impl Store {
         let matches: Vec<&GameRecord> = games.iter().filter(|g| g.name.to_lowercase().contains(&q)).collect();
         match matches.len() {
             1 => Ok(matches[0].clone()),
-            0 => Err(CasError::NotFound {
-                kind: "game",
-                id: query.to_string(),
-            }),
+            0 => Err(CasError::NotFound { kind: "game", id: query.to_string() }),
             _ => Err(CasError::Invalid(format!(
                 "`{query}` matches several games: {}",
                 matches.iter().map(|g| format!("{} (#{})", g.name, g.id)).collect::<Vec<_>>().join(", ")
@@ -509,14 +485,9 @@ impl Store {
 
     fn update_game_flag(&self, game: GameId, col: &str, on: bool) -> CasResult<()> {
         let g = self.inner.lock();
-        let n = g
-            .conn
-            .execute(&format!("UPDATE games SET {col} = ?1 WHERE id = ?2"), params![on as i64, game])?;
+        let n = g.conn.execute(&format!("UPDATE games SET {col} = ?1 WHERE id = ?2"), params![on as i64, game])?;
         if n == 0 {
-            return Err(CasError::NotFound {
-                kind: "game",
-                id: game.to_string(),
-            });
+            return Err(CasError::NotFound { kind: "game", id: game.to_string() });
         }
         Ok(())
     }
@@ -524,10 +495,8 @@ impl Store {
     /// Updates tracked patterns.
     pub fn set_patterns(&self, game: GameId, patterns: &[String]) -> CasResult<()> {
         let g = self.inner.lock();
-        g.conn.execute(
-            "UPDATE games SET patterns = ?1 WHERE id = ?2",
-            params![serde_json::to_string(patterns)?, game],
-        )?;
+        g.conn
+            .execute("UPDATE games SET patterns = ?1 WHERE id = ?2", params![serde_json::to_string(patterns)?, game])?;
         Ok(())
     }
 
@@ -561,17 +530,10 @@ impl Store {
     /// Branches of a game.
     pub fn branches(&self, game: GameId) -> CasResult<Vec<BranchRecord>> {
         let g = self.inner.lock();
-        let mut stmt = g
-            .conn
-            .prepare("SELECT name, head, created_at FROM branches WHERE game_id = ?1 ORDER BY name")?;
+        let mut stmt =
+            g.conn.prepare("SELECT name, head, created_at FROM branches WHERE game_id = ?1 ORDER BY name")?;
         let rows = stmt
-            .query_map(params![game], |r| {
-                Ok(BranchRecord {
-                    name: r.get(0)?,
-                    head: r.get(1)?,
-                    created_at: r.get(2)?,
-                })
-            })?
+            .query_map(params![game], |r| Ok(BranchRecord { name: r.get(0)?, head: r.get(1)?, created_at: r.get(2)? }))?
             .collect::<Result<Vec<_>, _>>()?;
         Ok(rows)
     }
@@ -581,16 +543,11 @@ impl Store {
         let g = self.inner.lock();
         let head: Option<Option<CommitId>> = g
             .conn
-            .query_row(
-                "SELECT head FROM branches WHERE game_id = ?1 AND name = ?2",
-                params![game, branch],
-                |r| r.get(0),
-            )
+            .query_row("SELECT head FROM branches WHERE game_id = ?1 AND name = ?2", params![game, branch], |r| {
+                r.get(0)
+            })
             .optional()?;
-        head.ok_or_else(|| CasError::NotFound {
-            kind: "branch",
-            id: branch.to_string(),
-        })
+        head.ok_or_else(|| CasError::NotFound { kind: "branch", id: branch.to_string() })
     }
 
     /// Creates a branch at `from` (or at the current branch head).
@@ -616,34 +573,25 @@ impl Store {
         if n == 0 {
             return Err(CasError::Conflict(format!("branch `{name}` already exists")));
         }
-        Ok(BranchRecord {
-            name: name.to_string(),
-            head: start,
-            created_at: now,
-        })
+        Ok(BranchRecord { name: name.to_string(), head: start, created_at: now })
     }
 
     /// Makes `name` the current branch (does not touch files on disk).
     pub fn set_current_branch(&self, game: GameId, name: &str) -> CasResult<()> {
         self.branch_head(game, name)?;
         let g = self.inner.lock();
-        g.conn
-            .execute("UPDATE games SET current_branch = ?1 WHERE id = ?2", params![name, game])?;
+        g.conn.execute("UPDATE games SET current_branch = ?1 WHERE id = ?2", params![name, game])?;
         Ok(())
     }
 
     /// Moves a branch head (used by checkout --reset).
     pub fn set_branch_head(&self, game: GameId, name: &str, head: Option<CommitId>) -> CasResult<()> {
         let g = self.inner.lock();
-        let n = g.conn.execute(
-            "UPDATE branches SET head = ?1 WHERE game_id = ?2 AND name = ?3",
-            params![head, game, name],
-        )?;
+        let n = g
+            .conn
+            .execute("UPDATE branches SET head = ?1 WHERE game_id = ?2 AND name = ?3", params![head, game, name])?;
         if n == 0 {
-            return Err(CasError::NotFound {
-                kind: "branch",
-                id: name.to_string(),
-            });
+            return Err(CasError::NotFound { kind: "branch", id: name.to_string() });
         }
         Ok(())
     }
@@ -655,14 +603,9 @@ impl Store {
             return Err(CasError::Conflict(format!("cannot delete the current branch `{name}`")));
         }
         let g = self.inner.lock();
-        let n = g
-            .conn
-            .execute("DELETE FROM branches WHERE game_id = ?1 AND name = ?2", params![game, name])?;
+        let n = g.conn.execute("DELETE FROM branches WHERE game_id = ?1 AND name = ?2", params![game, name])?;
         if n == 0 {
-            return Err(CasError::NotFound {
-                kind: "branch",
-                id: name.to_string(),
-            });
+            return Err(CasError::NotFound { kind: "branch", id: name.to_string() });
         }
         Ok(())
     }
@@ -703,10 +646,7 @@ impl Store {
                 )
                 .optional()?
         };
-        let blob = blob.ok_or_else(|| CasError::NotFound {
-            kind: "file in commit",
-            id: format!("{commit}:{rel}"),
-        })?;
+        let blob = blob.ok_or_else(|| CasError::NotFound { kind: "file in commit", id: format!("{commit}:{rel}") })?;
         self.get_blob(&blob)
     }
 
@@ -716,10 +656,7 @@ impl Store {
         g.conn
             .query_row(&format!("SELECT {COMMIT_COLS} FROM commits WHERE id = ?1"), params![commit], row_commit)
             .optional()?
-            .ok_or_else(|| CasError::NotFound {
-                kind: "commit",
-                id: commit.to_string(),
-            })
+            .ok_or_else(|| CasError::NotFound { kind: "commit", id: commit.to_string() })
     }
 
     /// Records a snapshot. `changes` are applied on top of the current head of
@@ -752,12 +689,7 @@ impl Store {
                     let blob = self.put_blob_tx(&tx, bytes)?;
                     files.insert(
                         rel.clone(),
-                        CommitFile {
-                            rel_path: rel,
-                            blob,
-                            size: bytes.len() as u64,
-                            mtime: ch.mtime,
-                        },
+                        CommitFile { rel_path: rel, blob, size: bytes.len() as u64, mtime: ch.mtime },
                     );
                 }
                 None => {
@@ -765,7 +697,8 @@ impl Store {
                 }
             }
         }
-        let same = files.len() == before.len() && files.iter().all(|(k, f)| before.get(k).map(|b| &b.blob) == Some(&f.blob));
+        let same =
+            files.len() == before.len() && files.iter().all(|(k, f)| before.get(k).map(|b| &b.blob) == Some(&f.blob));
         if same && head.is_some() {
             // Nothing new: roll back blob inserts (they are content-addressed, harmless either way).
             tx.commit()?;
@@ -789,15 +722,10 @@ impl Store {
                 params![id, normalize_rel_path(&c.rel_path)?, c.summary, serde_json::to_string(&c.lines)?],
             )?;
         }
-        let updated = tx.execute(
-            "UPDATE branches SET head = ?1 WHERE game_id = ?2 AND name = ?3",
-            params![id, game, branch],
-        )?;
+        let updated =
+            tx.execute("UPDATE branches SET head = ?1 WHERE game_id = ?2 AND name = ?3", params![id, game, branch])?;
         if updated == 0 {
-            return Err(CasError::NotFound {
-                kind: "branch",
-                id: branch.to_string(),
-            });
+            return Err(CasError::NotFound { kind: "branch", id: branch.to_string() });
         }
         tx.commit()?;
         drop(g);
@@ -822,9 +750,8 @@ impl Store {
     /// Every commit of a game (all branches), newest first.
     pub fn all_commits(&self, game: GameId) -> CasResult<Vec<CommitRecord>> {
         let g = self.inner.lock();
-        let mut stmt = g
-            .conn
-            .prepare(&format!("SELECT {COMMIT_COLS} FROM commits WHERE game_id = ?1 ORDER BY id DESC"))?;
+        let mut stmt =
+            g.conn.prepare(&format!("SELECT {COMMIT_COLS} FROM commits WHERE game_id = ?1 ORDER BY id DESC"))?;
         let rows = stmt.query_map(params![game], row_commit)?.collect::<Result<Vec<_>, _>>()?;
         Ok(rows)
     }
@@ -832,39 +759,27 @@ impl Store {
     /// Per-file semantic changelogs of a commit.
     pub fn changelogs(&self, commit: CommitId) -> CasResult<Vec<Changelog>> {
         let g = self.inner.lock();
-        let mut stmt = g
-            .conn
-            .prepare("SELECT rel_path, summary, lines FROM changelogs WHERE commit_id = ?1 ORDER BY rel_path")?;
+        let mut stmt =
+            g.conn.prepare("SELECT rel_path, summary, lines FROM changelogs WHERE commit_id = ?1 ORDER BY rel_path")?;
         let rows = stmt
             .query_map(params![commit], |r| {
                 Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, String>(2)?))
             })?
             .collect::<Result<Vec<_>, _>>()?;
         rows.into_iter()
-            .map(|(rel_path, summary, lines)| {
-                Ok(Changelog {
-                    rel_path,
-                    summary,
-                    lines: serde_json::from_str(&lines)?,
-                })
-            })
+            .map(|(rel_path, summary, lines)| Ok(Changelog { rel_path, summary, lines: serde_json::from_str(&lines)? }))
             .collect()
     }
 
     /// Resolves `HEAD`, `HEAD~N`, `<branch>`, `<branch>~N`, a tag or a numeric id.
     pub fn resolve_rev(&self, game: GameId, rev: &str) -> CasResult<CommitId> {
         let (base, back) = match rev.rsplit_once('~') {
-            Some((b, n)) => (
-                b,
-                n.parse::<usize>()
-                    .map_err(|_| CasError::Invalid(format!("bad revision `{rev}`")))?,
-            ),
+            Some((b, n)) => (b, n.parse::<usize>().map_err(|_| CasError::Invalid(format!("bad revision `{rev}`")))?),
             None => (rev, 0),
         };
         let current = self.game(game)?.current_branch;
         let start: CommitId = if base.eq_ignore_ascii_case("head") || base.is_empty() {
-            self.branch_head(game, &current)?
-                .ok_or_else(|| CasError::NotFound { kind: "commit", id: "HEAD".into() })?
+            self.branch_head(game, &current)?.ok_or_else(|| CasError::NotFound { kind: "commit", id: "HEAD".into() })?
         } else if let Ok(Some(h)) = self.branch_head(game, base) {
             h
         } else if let Some(t) = self.tags(game)?.into_iter().find(|t| t.name == base) {
@@ -876,17 +791,12 @@ impl Store {
             }
             id
         } else {
-            return Err(CasError::NotFound {
-                kind: "revision",
-                id: rev.to_string(),
-            });
+            return Err(CasError::NotFound { kind: "revision", id: rev.to_string() });
         };
         let mut cur = start;
         for _ in 0..back {
-            cur = self
-                .commit(cur)?
-                .parent
-                .ok_or_else(|| CasError::NotFound { kind: "revision", id: rev.to_string() })?;
+            cur =
+                self.commit(cur)?.parent.ok_or_else(|| CasError::NotFound { kind: "revision", id: rev.to_string() })?;
         }
         Ok(cur)
     }
@@ -909,20 +819,15 @@ impl Store {
         if n == 0 {
             return Err(CasError::Conflict(format!("tag `{name}` already exists")));
         }
-        Ok(TagRecord {
-            name: name.to_string(),
-            commit_id: commit,
-            protected: false,
-            created_at: now,
-        })
+        Ok(TagRecord { name: name.to_string(), commit_id: commit, protected: false, created_at: now })
     }
 
     /// Tags of a game.
     pub fn tags(&self, game: GameId) -> CasResult<Vec<TagRecord>> {
         let g = self.inner.lock();
-        let mut stmt = g
-            .conn
-            .prepare("SELECT name, commit_id, protected, created_at FROM tags WHERE game_id = ?1 ORDER BY created_at")?;
+        let mut stmt = g.conn.prepare(
+            "SELECT name, commit_id, protected, created_at FROM tags WHERE game_id = ?1 ORDER BY created_at",
+        )?;
         let rows = stmt
             .query_map(params![game], |r| {
                 Ok(TagRecord {
@@ -939,15 +844,11 @@ impl Store {
     /// Deletes an unprotected tag.
     pub fn delete_tag(&self, game: GameId, name: &str) -> CasResult<()> {
         let g = self.inner.lock();
-        let n = g.conn.execute(
-            "DELETE FROM tags WHERE game_id = ?1 AND name = ?2 AND protected = 0",
-            params![game, name],
-        )?;
+        let n = g
+            .conn
+            .execute("DELETE FROM tags WHERE game_id = ?1 AND name = ?2 AND protected = 0", params![game, name])?;
         if n == 0 {
-            return Err(CasError::NotFound {
-                kind: "unprotected tag",
-                id: name.to_string(),
-            });
+            return Err(CasError::NotFound { kind: "unprotected tag", id: name.to_string() });
         }
         Ok(())
     }
@@ -964,7 +865,13 @@ impl Store {
     }
 
     /// Adds or replaces (same alias) a pinned variable.
-    pub fn upsert_cheat(&self, game: GameId, rel_path: &str, alias: &str, location: &Location) -> CasResult<CheatEntry> {
+    pub fn upsert_cheat(
+        &self,
+        game: GameId,
+        rel_path: &str,
+        alias: &str,
+        location: &Location,
+    ) -> CasResult<CheatEntry> {
         let rel = normalize_rel_path(rel_path)?;
         if alias.trim().is_empty() {
             return Err(CasError::Invalid("alias cannot be empty".into()));
@@ -993,10 +900,7 @@ impl Store {
                 )
                 .optional()?
         };
-        Self::decode_cheat(row.ok_or_else(|| CasError::NotFound {
-            kind: "cheat entry",
-            id: alias.to_string(),
-        })?)
+        Self::decode_cheat(row.ok_or_else(|| CasError::NotFound { kind: "cheat entry", id: alias.to_string() })?)
     }
 
     /// Cheat table of a game.
@@ -1021,10 +925,7 @@ impl Store {
             params![v, enabled as i64, game, alias],
         )?;
         if n == 0 {
-            return Err(CasError::NotFound {
-                kind: "cheat entry",
-                id: alias.to_string(),
-            });
+            return Err(CasError::NotFound { kind: "cheat entry", id: alias.to_string() });
         }
         Ok(())
     }
@@ -1037,10 +938,7 @@ impl Store {
             params![enabled as i64, game, alias],
         )?;
         if n == 0 {
-            return Err(CasError::NotFound {
-                kind: "cheat entry",
-                id: alias.to_string(),
-            });
+            return Err(CasError::NotFound { kind: "cheat entry", id: alias.to_string() });
         }
         Ok(())
     }
@@ -1056,10 +954,7 @@ impl Store {
             params![new_alias.trim(), game, alias],
         )?;
         if n == 0 {
-            return Err(CasError::NotFound {
-                kind: "cheat entry",
-                id: alias.to_string(),
-            });
+            return Err(CasError::NotFound { kind: "cheat entry", id: alias.to_string() });
         }
         Ok(())
     }
@@ -1067,14 +962,9 @@ impl Store {
     /// Removes an entry.
     pub fn delete_cheat(&self, game: GameId, alias: &str) -> CasResult<()> {
         let g = self.inner.lock();
-        let n = g
-            .conn
-            .execute("DELETE FROM cheat_table WHERE game_id = ?1 AND alias = ?2", params![game, alias])?;
+        let n = g.conn.execute("DELETE FROM cheat_table WHERE game_id = ?1 AND alias = ?2", params![game, alias])?;
         if n == 0 {
-            return Err(CasError::NotFound {
-                kind: "cheat entry",
-                id: alias.to_string(),
-            });
+            return Err(CasError::NotFound { kind: "cheat entry", id: alias.to_string() });
         }
         Ok(())
     }
@@ -1101,9 +991,9 @@ impl Store {
     /// Most recent events (newest first), optionally after an id.
     pub fn events(&self, after_id: Option<i64>, limit: usize) -> CasResult<Vec<EventRecord>> {
         let g = self.inner.lock();
-        let mut stmt = g.conn.prepare(
-            "SELECT id, game_id, at, kind, message FROM events WHERE id > ?1 ORDER BY id DESC LIMIT ?2",
-        )?;
+        let mut stmt = g
+            .conn
+            .prepare("SELECT id, game_id, at, kind, message FROM events WHERE id > ?1 ORDER BY id DESC LIMIT ?2")?;
         let rows = stmt
             .query_map(params![after_id.unwrap_or(0), limit as i64], |r| {
                 Ok(EventRecord {
@@ -1142,11 +1032,7 @@ impl Store {
         let st: Option<DaemonStatus> = g
             .conn
             .query_row("SELECT pid, heartbeat, info FROM daemon_status WHERE id = 1", [], |r| {
-                Ok(DaemonStatus {
-                    pid: r.get::<_, i64>(0)? as u32,
-                    heartbeat: r.get(1)?,
-                    info: r.get(2)?,
-                })
+                Ok(DaemonStatus { pid: r.get::<_, i64>(0)? as u32, heartbeat: r.get(1)?, info: r.get(2)? })
             })
             .optional()?;
         Ok(st.filter(|s| now_ms() - s.heartbeat <= max_age_ms))
@@ -1169,9 +1055,7 @@ impl Store {
         let tx = g.conn.transaction()?;
         let rows: Vec<(i64, String, String)> = {
             let mut stmt = tx.prepare("SELECT id, action, payload FROM requests WHERE handled = 0 ORDER BY id")?;
-            let rows = stmt
-                .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?
-                .collect::<Result<Vec<_>, _>>()?;
+            let rows = stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?.collect::<Result<Vec<_>, _>>()?;
             rows
         };
         let mut out = Vec::new();
@@ -1192,17 +1076,13 @@ impl Store {
         let tx = g.conn.transaction()?;
         let rows: Vec<(i64, String, String)> = {
             let mut stmt = tx.prepare("SELECT id, action, payload FROM requests WHERE handled = 0 ORDER BY id")?;
-            let rows = stmt
-                .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?
-                .collect::<Result<Vec<_>, _>>()?;
+            let rows = stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?.collect::<Result<Vec<_>, _>>()?;
             rows
         };
         tx.execute("UPDATE requests SET handled = 1 WHERE handled = 0", [])?;
         tx.execute("DELETE FROM requests WHERE handled = 1 AND at < ?1", params![now_ms() - 86_400_000])?;
         tx.commit()?;
-        rows.into_iter()
-            .map(|(id, a, p)| Ok((id, a, serde_json::from_str(&p)?)))
-            .collect()
+        rows.into_iter().map(|(id, a, p)| Ok((id, a, serde_json::from_str(&p)?))).collect()
     }
 
     // ------------------------------------------------------------------
@@ -1212,7 +1092,9 @@ impl Store {
     /// Storage statistics.
     pub fn stats(&self) -> CasResult<StoreStats> {
         let g = self.inner.lock();
-        let q = |sql: &str| -> CasResult<i64> { Ok(g.conn.query_row(sql, [], |r| r.get::<_, Option<i64>>(0))?.unwrap_or(0)) };
+        let q = |sql: &str| -> CasResult<i64> {
+            Ok(g.conn.query_row(sql, [], |r| r.get::<_, Option<i64>>(0))?.unwrap_or(0))
+        };
         Ok(StoreStats {
             logical_bytes: (q("SELECT SUM(size) FROM commit_files")?
                 + q("SELECT SUM(b.size) FROM safety_backups s JOIN blobs b ON b.hash = s.blob")?)
@@ -1247,9 +1129,8 @@ impl Store {
             let tx = g.conn.transaction()?;
             // Reachability from branch heads and tags.
             let roots: Vec<i64> = {
-                let mut stmt = tx.prepare(
-                    "SELECT head FROM branches WHERE head IS NOT NULL UNION SELECT commit_id FROM tags",
-                )?;
+                let mut stmt =
+                    tx.prepare("SELECT head FROM branches WHERE head IS NOT NULL UNION SELECT commit_id FROM tags")?;
                 let rows = stmt.query_map([], |r| r.get(0))?.collect::<Result<Vec<_>, _>>()?;
                 rows
             };
@@ -1294,7 +1175,8 @@ impl Store {
             }
             removed_blobs = dead.len() as u64;
             removed_chunks = {
-                let mut stmt = tx.prepare("SELECT hash FROM chunks WHERE hash NOT IN (SELECT chunk FROM blob_chunks)")?;
+                let mut stmt =
+                    tx.prepare("SELECT hash FROM chunks WHERE hash NOT IN (SELECT chunk FROM blob_chunks)")?;
                 let rows = stmt.query_map([], |r| r.get(0))?.collect::<Result<Vec<_>, _>>()?;
                 rows
             };

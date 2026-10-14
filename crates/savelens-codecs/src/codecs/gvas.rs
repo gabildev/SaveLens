@@ -94,10 +94,7 @@ impl FStr {
         let start = r.pos();
         let len = r.i32_le(ctx)?;
         if len == 0 {
-            return Ok(FStr {
-                text: String::new(),
-                enc: StrEncoding::Empty,
-            });
+            return Ok(FStr { text: String::new(), enc: StrEncoding::Empty });
         }
         if len > 0 {
             let bytes = r.take(len as usize, ctx)?;
@@ -105,10 +102,7 @@ impl FStr {
             if term != [0] {
                 return Err(CodecError::malformed(CODEC, start, format!("{ctx}: 8-bit FString is not NUL-terminated")));
             }
-            return Ok(FStr {
-                text: body.iter().map(|&b| char::from(b)).collect(),
-                enc: StrEncoding::Latin1,
-            });
+            return Ok(FStr { text: body.iter().map(|&b| char::from(b)).collect(), enc: StrEncoding::Latin1 });
         }
         let units = len
             .checked_neg()
@@ -119,12 +113,10 @@ impl FStr {
         let Some((&0, body)) = code_units.split_last() else {
             return Err(CodecError::malformed(CODEC, start, format!("{ctx}: UTF-16 FString is not NUL-terminated")));
         };
-        let text = String::from_utf16(body)
-            .map_err(|_| CodecError::malformed(CODEC, start, format!("{ctx}: UTF-16 FString contains unpaired surrogates")))?;
-        Ok(FStr {
-            text,
-            enc: StrEncoding::Utf16,
-        })
+        let text = String::from_utf16(body).map_err(|_| {
+            CodecError::malformed(CODEC, start, format!("{ctx}: UTF-16 FString contains unpaired surrogates"))
+        })?;
+        Ok(FStr { text, enc: StrEncoding::Utf16 })
     }
 
     fn write(&self, out: &mut Vec<u8>) -> CodecResult<()> {
@@ -135,7 +127,11 @@ impl FStr {
                 let mut bytes = Vec::with_capacity(self.text.len() + 1);
                 for c in self.text.chars() {
                     let b = u8::try_from(u32::from(c)).map_err(|_| {
-                        CodecError::unencodable(CODEC, self.text.as_str(), format!("character {c:?} does not fit an 8-bit FString"))
+                        CodecError::unencodable(
+                            CODEC,
+                            self.text.as_str(),
+                            format!("character {c:?} does not fit an 8-bit FString"),
+                        )
                     })?;
                     bytes.push(b);
                 }
@@ -364,19 +360,11 @@ const fn fld(name: &'static str, ty: ScalarTy) -> BinField {
 }
 
 const fn grp(group: &'static str, name: &'static str, ty: ScalarTy) -> BinField {
-    BinField {
-        group: Some(group),
-        name,
-        ty,
-    }
+    BinField { group: Some(group), name, ty }
 }
 
 const fn layout(name: &'static str, fields: &'static [BinField]) -> BinLayout {
-    BinLayout {
-        name,
-        fields,
-        direct: false,
-    }
+    BinLayout { name, fields, direct: false }
 }
 
 use ScalarTy::{F32, F64, I32, I64, U8};
@@ -413,20 +401,10 @@ const BOX_D: &[BinField] = &[
     grp("Max", "Z", F64),
     fld("IsValid", U8),
 ];
-const BOX2D_F: &[BinField] = &[
-    grp("Min", "X", F32),
-    grp("Min", "Y", F32),
-    grp("Max", "X", F32),
-    grp("Max", "Y", F32),
-    fld("bIsValid", U8),
-];
-const BOX2D_D: &[BinField] = &[
-    grp("Min", "X", F64),
-    grp("Min", "Y", F64),
-    grp("Max", "X", F64),
-    grp("Max", "Y", F64),
-    fld("bIsValid", U8),
-];
+const BOX2D_F: &[BinField] =
+    &[grp("Min", "X", F32), grp("Min", "Y", F32), grp("Max", "X", F32), grp("Max", "Y", F32), fld("bIsValid", U8)];
+const BOX2D_D: &[BinField] =
+    &[grp("Min", "X", F64), grp("Min", "Y", F64), grp("Max", "X", F64), grp("Max", "Y", F64), fld("bIsValid", U8)];
 
 /// Well-known binary structs. Float/double variants share a name; the value
 /// size decides which one applies.
@@ -462,22 +440,12 @@ static LAYOUTS: &[BinLayout] = &[
     layout("Box", BOX_D),
     layout("Box2D", BOX2D_F),
     layout("Box2D", BOX2D_D),
-    BinLayout {
-        name: "DateTime",
-        fields: TICKS,
-        direct: true,
-    },
-    BinLayout {
-        name: "Timespan",
-        fields: TICKS,
-        direct: true,
-    },
+    BinLayout { name: "DateTime", fields: TICKS, direct: true },
+    BinLayout { name: "Timespan", fields: TICKS, direct: true },
 ];
 
 fn guid_to_string(g: &[u8; 16]) -> String {
-    g.chunks_exact(4)
-        .map(|c| format!("{:08X}", u32::from_le_bytes([c[0], c[1], c[2], c[3]])))
-        .collect()
+    g.chunks_exact(4).map(|c| format!("{:08X}", u32::from_le_bytes([c[0], c[1], c[2], c[3]]))).collect()
 }
 
 fn parse_guid(s: &str, path: &NodePath) -> CodecResult<[u8; 16]> {
@@ -601,10 +569,16 @@ enum ClassicExtra {
     Bool,
     /// `ByteProperty` / `EnumProperty`: enum name.
     Enum(FStr),
-    Struct { name: FStr, guid: [u8; 16] },
+    Struct {
+        name: FStr,
+        guid: [u8; 16],
+    },
     /// `ArrayProperty` / `SetProperty`: inner type.
     Inner(FStr),
-    Map { key: FStr, value: FStr },
+    Map {
+        key: FStr,
+        value: FStr,
+    },
 }
 
 /// UE 5.4 `FPropertyTypeName` node.
@@ -621,7 +595,8 @@ impl TypeNode {
         }
         let name = FStr::read(r, "type name")?;
         let count = r.i32_le("type parameter count")?;
-        let count = usize::try_from(count).map_err(|_| r.malformed(format!("negative type parameter count {count}")))?;
+        let count =
+            usize::try_from(count).map_err(|_| r.malformed(format!("negative type parameter count {count}")))?;
         r.check_count(count, 8, "type parameters")?;
         let mut params = Vec::with_capacity(count);
         for _ in 0..count {
@@ -651,18 +626,8 @@ impl TypeNode {
 
 #[derive(Debug, Clone)]
 enum Tag {
-    Classic {
-        type_name: FStr,
-        extra: ClassicExtra,
-        guid: PropGuid,
-        ext: Option<u8>,
-    },
-    Complete {
-        type_name: TypeNode,
-        flags: u8,
-        guid: Option<[u8; 16]>,
-        ext: Option<u8>,
-    },
+    Classic { type_name: FStr, extra: ClassicExtra, guid: PropGuid, ext: Option<u8> },
+    Complete { type_name: TypeNode, flags: u8, guid: Option<[u8; 16]>, ext: Option<u8> },
 }
 
 #[derive(Debug, Clone)]
@@ -724,7 +689,8 @@ impl Header {
         let custom = if save_game_version >= 2 {
             let format = r.i32_le("CustomVersionFormat")?;
             let count = r.i32_le("custom version count")?;
-            let count = usize::try_from(count).map_err(|_| r.malformed(format!("negative custom version count {count}")))?;
+            let count =
+                usize::try_from(count).map_err(|_| r.malformed(format!("negative custom version count {count}")))?;
             match format {
                 3 => {
                     r.check_count(count, 20, "custom versions")?;
@@ -859,7 +825,9 @@ fn simple_desc(name: &str) -> TypeDesc {
     match name {
         "BoolProperty" => TypeDesc::Bool,
         "ByteProperty" => TypeDesc::Byte(None),
-        "StrProperty" | "NameProperty" | "ObjectProperty" | "ClassProperty" | "WeakObjectProperty" | "EnumProperty" => TypeDesc::Str,
+        "StrProperty" | "NameProperty" | "ObjectProperty" | "ClassProperty" | "WeakObjectProperty" | "EnumProperty" => {
+            TypeDesc::Str
+        }
         "SoftObjectProperty" | "SoftClassProperty" => TypeDesc::SoftObject,
         "StructProperty" => TypeDesc::Struct(None),
         other => ScalarTy::from_property(other).map(TypeDesc::Scalar).unwrap_or(TypeDesc::Unknown),
@@ -911,10 +879,8 @@ fn struct_candidates(name: Option<&str>, elem_size: Option<usize>, role: Role, f
     let mut v = Vec::new();
     match name {
         Some(n) => {
-            let mut layouts: Vec<&'static BinLayout> = LAYOUTS
-                .iter()
-                .filter(|l| l.name == n && elem_size.is_none_or(|s| s == l.size()))
-                .collect();
+            let mut layouts: Vec<&'static BinLayout> =
+                LAYOUTS.iter().filter(|l| l.name == n && elem_size.is_none_or(|s| s == l.size())).collect();
             // Stable sort: the preferred precision first.
             layouts.sort_by_key(|l| l.is_double() != fmt.prefer_double);
             v.extend(layouts.into_iter().map(ElemKind::Bin));
@@ -1031,20 +997,11 @@ impl InnerTag {
             None
         };
         if size != r.remaining() {
-            return Err(r.malformed(format!("inner tag size {size} does not match the {} remaining bytes", r.remaining())));
+            return Err(
+                r.malformed(format!("inner tag size {size} does not match the {} remaining bytes", r.remaining()))
+            );
         }
-        Ok((
-            InnerTag {
-                name,
-                type_name,
-                array_index,
-                struct_name,
-                struct_guid,
-                guid,
-                ext,
-            },
-            size,
-        ))
+        Ok((InnerTag { name, type_name, array_index, struct_name, struct_guid, guid, ext }, size))
     }
 
     fn write(&self, size: usize, out: &mut Vec<u8>) -> CodecResult<()> {
@@ -1071,29 +1028,17 @@ fn read_array(inner: &TypeDesc, r: &mut ByteReader<'_>, fmt: Fmt, depth: usize) 
             let mut r2 = r.clone();
             if let Ok((kind, elems)) = first_fit(&mut r2, &kinds, |k, rr| read_n(k, count, rr, fmt, depth)) {
                 *r = r2;
-                return Ok(ArrayValue {
-                    kind,
-                    inner_tag: None,
-                    elems,
-                });
+                return Ok(ArrayValue { kind, inner_tag: None, elems });
             }
         }
         let (tag, size) = InnerTag::read(r, fmt)?;
         let kinds = struct_candidates(Some(&tag.struct_name.text), per_elem(size, count), Role::Value, fmt);
         let (kind, elems) = first_fit(r, &kinds, |k, rr| read_n(k, count, rr, fmt, depth))?;
-        return Ok(ArrayValue {
-            kind,
-            inner_tag: Some(tag),
-            elems,
-        });
+        return Ok(ArrayValue { kind, inner_tag: Some(tag), elems });
     }
     let kinds = elem_candidates(inner, per_elem(r.remaining(), count), Role::Value, fmt);
     let (kind, elems) = first_fit(r, &kinds, |k, rr| read_n(k, count, rr, fmt, depth))?;
-    Ok(ArrayValue {
-        kind,
-        inner_tag: None,
-        elems,
-    })
+    Ok(ArrayValue { kind, inner_tag: None, elems })
 }
 
 fn read_set(inner: &TypeDesc, r: &mut ByteReader<'_>, fmt: Fmt, depth: usize) -> CodecResult<SetValue> {
@@ -1125,10 +1070,7 @@ fn read_map(key: &TypeDesc, value: &TypeDesc, r: &mut ByteReader<'_>, fmt: Fmt, 
         }
         Ok((removed, entries))
     })?;
-    Ok(MapValue {
-        removed,
-        entries,
-    })
+    Ok(MapValue { removed, entries })
 }
 
 /// Parses a property value of exactly `data.len()` bytes; anything that is
@@ -1194,18 +1136,7 @@ fn read_prop(r: &mut ByteReader<'_>, name: FStr, fmt: Fmt, depth: usize) -> Code
         let ext = if flags & FLAG_HAS_PROPERTY_EXTENSIONS != 0 { Some(read_ext(r)?) } else { None };
         let desc = complete_desc(&type_name, false);
         let bool_val = u8::from(flags & FLAG_BOOL_TRUE != 0);
-        (
-            Tag::Complete {
-                type_name,
-                flags,
-                guid,
-                ext,
-            },
-            desc,
-            size,
-            array_index,
-            bool_val,
-        )
+        (Tag::Complete { type_name, flags, guid, ext }, desc, size, array_index, bool_val)
     } else {
         let type_name = FStr::read(r, "property type")?;
         let size = r.i32_le("property size")?;
@@ -1217,34 +1148,22 @@ fn read_prop(r: &mut ByteReader<'_>, name: FStr, fmt: Fmt, depth: usize) -> Code
                 ClassicExtra::Bool
             }
             "ByteProperty" | "EnumProperty" => ClassicExtra::Enum(FStr::read(r, "enum name")?),
-            "StructProperty" => ClassicExtra::Struct {
-                name: FStr::read(r, "struct name")?,
-                guid: r.array::<16>("struct guid")?,
-            },
+            "StructProperty" => {
+                ClassicExtra::Struct { name: FStr::read(r, "struct name")?, guid: r.array::<16>("struct guid")? }
+            }
             "ArrayProperty" | "SetProperty" => ClassicExtra::Inner(FStr::read(r, "inner type")?),
-            "MapProperty" => ClassicExtra::Map {
-                key: FStr::read(r, "map key type")?,
-                value: FStr::read(r, "map value type")?,
-            },
+            "MapProperty" => {
+                ClassicExtra::Map { key: FStr::read(r, "map key type")?, value: FStr::read(r, "map value type")? }
+            }
             _ => ClassicExtra::None,
         };
         let guid = PropGuid::read(r)?;
         let ext = if fmt.tag_extension { Some(read_ext(r)?) } else { None };
         let desc = classic_desc(&type_name.text, &extra);
-        (
-            Tag::Classic {
-                type_name,
-                extra,
-                guid,
-                ext,
-            },
-            desc,
-            size,
-            array_index,
-            bool_val,
-        )
+        (Tag::Classic { type_name, extra, guid, ext }, desc, size, array_index, bool_val)
     };
-    let size = usize::try_from(size).map_err(|_| r.malformed(format!("property `{}` has negative size {size}", name.text)))?;
+    let size =
+        usize::try_from(size).map_err(|_| r.malformed(format!("property `{}` has negative size {size}", name.text)))?;
     let data = r.take(size, "property value")?;
     let value = if matches!(desc, TypeDesc::Bool) {
         if size != 0 {
@@ -1257,12 +1176,7 @@ fn read_prop(r: &mut ByteReader<'_>, name: FStr, fmt: Fmt, depth: usize) -> Code
     } else {
         parse_value(&desc, data, fmt, depth)
     };
-    Ok(Property {
-        name,
-        array_index,
-        tag,
-        value,
-    })
+    Ok(Property { name, array_index, tag, value })
 }
 
 fn read_props(r: &mut ByteReader<'_>, fmt: Fmt, depth: usize) -> CodecResult<PropList> {
@@ -1348,12 +1262,7 @@ fn write_prop(p: &Property, out: &mut Vec<u8>) -> CodecResult<()> {
     }
     let size = len_i32(body.len(), p.name.text.as_str())?;
     match &p.tag {
-        Tag::Classic {
-            type_name,
-            extra,
-            guid,
-            ext,
-        } => {
+        Tag::Classic { type_name, extra, guid, ext } => {
             type_name.write(out)?;
             out.put_i32_le(size);
             out.put_i32_le(p.array_index);
@@ -1381,12 +1290,7 @@ fn write_prop(p: &Property, out: &mut Vec<u8>) -> CodecResult<()> {
                 out.put_u8(*e);
             }
         }
-        Tag::Complete {
-            type_name,
-            flags,
-            guid,
-            ext,
-        } => {
+        Tag::Complete { type_name, flags, guid, ext } => {
             type_name.write(out)?;
             out.put_i32_le(size);
             let mut f = *flags;
@@ -1430,11 +1334,7 @@ fn prop_keys(props: &[Property]) -> Vec<String> {
     let mut used: HashSet<String> = HashSet::with_capacity(props.len());
     let mut keys = Vec::with_capacity(props.len());
     for p in props {
-        let base = if p.array_index > 0 {
-            format!("{}#{}", p.name.text, p.array_index)
-        } else {
-            p.name.text.clone()
-        };
+        let base = if p.array_index > 0 { format!("{}#{}", p.name.text, p.array_index) } else { p.name.text.clone() };
         let key = if used.contains(&base) {
             let mut n = 2usize;
             loop {
@@ -1617,7 +1517,9 @@ fn reconcile_value(v: &mut Value, node: &Node, path: &NodePath) -> CodecResult<(
             check_shape(&current, node, path, "a soft object path")?;
             let names = strseq_names(list.len());
             for (s, name) in list.iter_mut().zip(names) {
-                let child = node.get(&NodePath::root().key(*name)).ok_or_else(|| CodecError::path_not_found(CODEC, path.key(*name)))?;
+                let child = node
+                    .get(&NodePath::root().key(*name))
+                    .ok_or_else(|| CodecError::path_not_found(CODEC, path.key(*name)))?;
                 s.set_text(expect_str(child, &path.key(*name))?);
             }
         }
@@ -1715,12 +1617,7 @@ impl GvasDocument {
         let fmt = Fmt::from_header(&header);
         let root = read_props(&mut r, fmt, 0)?;
         let trailing = r.rest().to_vec();
-        Ok(GvasDocument {
-            header,
-            fmt,
-            root,
-            trailing,
-        })
+        Ok(GvasDocument { header, fmt, root, trailing })
     }
 
     /// Serialises the document.
@@ -2162,7 +2059,9 @@ mod tests {
         let mut edited = ast.clone();
         edited.set(&NodePath::parse("bAlive").unwrap(), Node::Bool(false), false).unwrap();
         edited.set(&NodePath::parse("Pos.Y").unwrap(), Node::F64(100.0), false).unwrap();
-        edited.set(&NodePath::parse("Difficulty").unwrap(), Node::String("EDifficulty::Nightmare".into()), false).unwrap();
+        edited
+            .set(&NodePath::parse("Difficulty").unwrap(), Node::String("EDifficulty::Nightmare".into()), false)
+            .unwrap();
         doc.apply_ast(&edited).unwrap();
         let out = doc.serialize().unwrap();
         let re = decode(&out);

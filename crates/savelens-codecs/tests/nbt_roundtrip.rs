@@ -269,12 +269,7 @@ fn java_uncompressed_level_dat() {
 #[test]
 fn java_gzip_level_dat() {
     let raw = java_bytes();
-    let gz = StreamParams::Gzip {
-        header: vec![0x1f, 0x8b, 8, 0, 0, 0, 0, 0, 0, 0],
-        level: 6,
-    }
-    .compress(&raw)
-    .unwrap();
+    let gz = StreamParams::Gzip { header: vec![0x1f, 0x8b, 8, 0, 0, 0, 0, 0, 0, 0], level: 6 }.compress(&raw).unwrap();
     let ctx = DetectContext::for_file("level.dat");
     assert_eq!(layer_algorithms(&gz, &ctx), vec![CompressionAlgorithm::Gzip]);
     let out = exercise(&gz, &ctx);
@@ -329,8 +324,7 @@ fn empty_list_types_preserved_after_edit() {
 
     // Filling the End-typed list infers the element type; removing an entry works.
     let mut root = s.root();
-    root.set(&p("Data.Player.ActiveEffects"), Node::Array(vec![Node::map_from([("Id", Node::I8(1))])]), false)
-        .unwrap();
+    root.set(&p("Data.Player.ActiveEffects"), Node::Array(vec![Node::map_from([("Id", Node::I8(1))])]), false).unwrap();
     root.remove(&p("Data.raining")).unwrap();
     root.set(&p("Data.Player.UUID"), Node::Array(vec![Node::I32(9), Node::I32(8)]), false).unwrap();
     s.apply_ast(&root).unwrap();

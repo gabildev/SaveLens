@@ -56,7 +56,12 @@ pub struct CherryPickReport {
 
 /// Checks that `src` can replace `dst` without changing leaf types (and,
 /// unless allowed, without structural changes). Returns the first problem.
-pub fn check_compatible(dst: &Node, src: &Node, opts: &CherryPickOptions, path: &mut NodePath) -> Result<(), (NodePath, String)> {
+pub fn check_compatible(
+    dst: &Node,
+    src: &Node,
+    opts: &CherryPickOptions,
+    path: &mut NodePath,
+) -> Result<(), (NodePath, String)> {
     let (dk, sk) = (dst.kind(), src.kind());
     if dk != sk {
         // Byte containers are interchangeable.
@@ -89,10 +94,7 @@ pub fn check_compatible(dst: &Node, src: &Node, opts: &CherryPickOptions, path: 
         }
         (Node::Array(da), Node::Array(sa)) => {
             if !opts.allow_structure_change && da.len() != sa.len() {
-                return Err((
-                    path.clone(),
-                    format!("array length differs ({} vs {})", da.len(), sa.len()),
-                ));
+                return Err((path.clone(), format!("array length differs ({} vs {})", da.len(), sa.len())));
             }
             // Elements are checked against the destination element at the same
             // index, or against the first destination element (homogeneous arrays).
@@ -128,12 +130,14 @@ fn deep_merge(dst: &mut Node, src: &Node) {
 ///
 /// All paths are validated before anything is modified: either every path is
 /// applied or `dest` is left untouched.
-pub fn cherry_pick(dest: &mut Node, source: &Node, paths: &[NodePath], opts: &CherryPickOptions) -> CoreResult<CherryPickReport> {
+pub fn cherry_pick(
+    dest: &mut Node,
+    source: &Node,
+    paths: &[NodePath],
+    opts: &CherryPickOptions,
+) -> CoreResult<CherryPickReport> {
     if paths.is_empty() {
-        return Err(CoreError::CherryPick {
-            path: "$".into(),
-            reason: "no paths selected".into(),
-        });
+        return Err(CoreError::CherryPick { path: "$".into(), reason: "no paths selected".into() });
     }
     // Reject overlapping selections (ambiguous order).
     for (i, a) in paths.iter().enumerate() {
@@ -158,10 +162,8 @@ pub fn cherry_pick(dest: &mut Node, source: &Node, paths: &[NodePath], opts: &Ch
         match work.get(path) {
             Some(dst) => {
                 let mut p = path.clone();
-                check_compatible(dst, src, opts, &mut p).map_err(|(at, reason)| CoreError::CherryPick {
-                    path: at.to_string(),
-                    reason,
-                })?;
+                check_compatible(dst, src, opts, &mut p)
+                    .map_err(|(at, reason)| CoreError::CherryPick { path: at.to_string(), reason })?;
                 if crate::merkle::bit_equal(dst, src) {
                     unchanged.push(path.clone());
                     continue;
@@ -190,11 +192,7 @@ pub fn cherry_pick(dest: &mut Node, source: &Node, paths: &[NodePath], opts: &Ch
     }
     let d = diff(&original, &work);
     *dest = work;
-    Ok(CherryPickReport {
-        applied,
-        unchanged,
-        diff: d,
-    })
+    Ok(CherryPickReport { applied, unchanged, diff: d })
 }
 
 #[cfg(test)]
@@ -207,10 +205,7 @@ mod tests {
                 "Player",
                 Node::map_from([
                     ("Gold", Node::I32(gold)),
-                    (
-                        "Inventory",
-                        Node::Array(items.iter().map(|s| Node::String(s.to_string())).collect()),
-                    ),
+                    ("Inventory", Node::Array(items.iter().map(|s| Node::String(s.to_string())).collect())),
                 ]),
             ),
             ("Quests", Node::map_from([("Main", Node::String(quest.into()))])),
@@ -221,13 +216,9 @@ mod tests {
     fn restores_only_selected_subtree() {
         let old = save(100, &["Sword", "Shield", "Potion"], "Active");
         let mut cur = save(900, &["Stick"], "Completed");
-        let rep = cherry_pick(
-            &mut cur,
-            &old,
-            &[NodePath::parse("Player.Inventory").unwrap()],
-            &CherryPickOptions::default(),
-        )
-        .unwrap();
+        let rep =
+            cherry_pick(&mut cur, &old, &[NodePath::parse("Player.Inventory").unwrap()], &CherryPickOptions::default())
+                .unwrap();
         assert_eq!(rep.applied.len(), 1);
         assert_eq!(cur, save(900, &["Sword", "Shield", "Potion"], "Completed"));
         assert!(!rep.diff.is_empty());
@@ -236,8 +227,7 @@ mod tests {
     #[test]
     fn type_change_rejected_atomically() {
         let mut src = save(1, &[], "x");
-        src.set(&NodePath::parse("Player.Gold").unwrap(), Node::String("lots".into()), false)
-            .unwrap();
+        src.set(&NodePath::parse("Player.Gold").unwrap(), Node::String("lots".into()), false).unwrap();
         let mut dst = save(2, &["a"], "y");
         let before = dst.clone();
         let err = cherry_pick(
@@ -255,10 +245,7 @@ mod tests {
     fn deep_merge_keeps_destination_only_keys() {
         let src = Node::map_from([("S", Node::map_from([("a", Node::I32(1))]))]);
         let mut dst = Node::map_from([("S", Node::map_from([("a", Node::I32(5)), ("b", Node::I32(6))]))]);
-        let opts = CherryPickOptions {
-            mode: CherryPickMode::DeepMerge,
-            ..CherryPickOptions::default()
-        };
+        let opts = CherryPickOptions { mode: CherryPickMode::DeepMerge, ..CherryPickOptions::default() };
         cherry_pick(&mut dst, &src, &[NodePath::parse("S").unwrap()], &opts).unwrap();
         assert_eq!(dst, Node::map_from([("S", Node::map_from([("a", Node::I32(1)), ("b", Node::I32(6))]))]));
     }
@@ -267,10 +254,7 @@ mod tests {
     fn structure_change_can_be_forbidden() {
         let src = save(1, &["a", "b"], "x");
         let mut dst = save(1, &["a"], "x");
-        let opts = CherryPickOptions {
-            allow_structure_change: false,
-            ..CherryPickOptions::default()
-        };
+        let opts = CherryPickOptions { allow_structure_change: false, ..CherryPickOptions::default() };
         assert!(cherry_pick(&mut dst, &src, &[NodePath::parse("Player.Inventory").unwrap()], &opts).is_err());
     }
 
@@ -293,10 +277,7 @@ mod tests {
         let mut dst = Node::map_from([("A", Node::I32(1))]);
         let p = NodePath::parse("New").unwrap();
         assert!(cherry_pick(&mut dst, &src, std::slice::from_ref(&p), &CherryPickOptions::default()).is_err());
-        let opts = CherryPickOptions {
-            create_missing: true,
-            ..CherryPickOptions::default()
-        };
+        let opts = CherryPickOptions { create_missing: true, ..CherryPickOptions::default() };
         cherry_pick(&mut dst, &src, std::slice::from_ref(&p), &opts).unwrap();
         assert_eq!(dst.get(&p), Some(&Node::I32(1)));
         let rep = cherry_pick(&mut dst, &src, &[NodePath::parse("A").unwrap()], &opts).unwrap();

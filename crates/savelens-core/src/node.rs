@@ -134,9 +134,7 @@ impl ScalarValue {
     pub fn as_i128(self) -> Option<i128> {
         match self {
             ScalarValue::Int(i) => Some(i),
-            ScalarValue::Float(f) if f.is_finite() && f.fract() == 0.0 && f.abs() < 1.7e38 => {
-                Some(f as i128)
-            }
+            ScalarValue::Float(f) if f.is_finite() && f.fract() == 0.0 && f.abs() < 1.7e38 => Some(f as i128),
             ScalarValue::Float(_) => None,
         }
     }
@@ -256,10 +254,7 @@ pub fn parse_numeric_string(s: &str) -> Option<(ScalarValue, NumericStringStyle)
         if digits.len() > 1 && digits.starts_with('0') {
             return None;
         }
-        return t
-            .parse::<i128>()
-            .ok()
-            .map(|v| (ScalarValue::Int(v), NumericStringStyle::Integer));
+        return t.parse::<i128>().ok().map(|v| (ScalarValue::Int(v), NumericStringStyle::Integer));
     }
     if let Some((int, frac)) = digits.split_once('.') {
         if !int.is_empty()
@@ -267,18 +262,11 @@ pub fn parse_numeric_string(s: &str) -> Option<(ScalarValue, NumericStringStyle)
             && int.bytes().all(|b| b.is_ascii_digit())
             && frac.bytes().all(|b| b.is_ascii_digit())
         {
-            return t
-                .parse::<f64>()
-                .ok()
-                .map(|v| (ScalarValue::Float(v), NumericStringStyle::Fixed(frac.len())));
+            return t.parse::<f64>().ok().map(|v| (ScalarValue::Float(v), NumericStringStyle::Fixed(frac.len())));
         }
     }
     let lower = digits.to_ascii_lowercase();
-    if lower.contains('e')
-        && lower
-            .bytes()
-            .all(|b| b.is_ascii_digit() || matches!(b, b'e' | b'.' | b'-' | b'+'))
-    {
+    if lower.contains('e') && lower.bytes().all(|b| b.is_ascii_digit() || matches!(b, b'e' | b'.' | b'-' | b'+')) {
         return t
             .parse::<f64>()
             .ok()
@@ -396,9 +384,7 @@ impl Node {
         macro_rules! int_node {
             ($variant:ident, $ty:ty, $name:literal) => {{
                 let i = int($name)?;
-                <$ty>::try_from(i)
-                    .map(Node::$variant)
-                    .map_err(|_| out_of_range($name))
+                <$ty>::try_from(i).map(Node::$variant).map_err(|_| out_of_range($name))
             }};
         }
         match self {
@@ -424,12 +410,10 @@ impl Node {
                 _ => Err(out_of_range("bool (0 or 1)")),
             },
             Node::String(s) => {
-                let style = parse_numeric_string(s)
-                    .map(|(_, st)| st)
-                    .unwrap_or(match value {
-                        ScalarValue::Int(_) => NumericStringStyle::Integer,
-                        ScalarValue::Float(_) => NumericStringStyle::Float,
-                    });
+                let style = parse_numeric_string(s).map(|(_, st)| st).unwrap_or(match value {
+                    ScalarValue::Int(_) => NumericStringStyle::Integer,
+                    ScalarValue::Float(_) => NumericStringStyle::Float,
+                });
                 Ok(Node::String(format_numeric_string(value, style)))
             }
             other => Err(CoreError::TypeMismatch {
@@ -550,9 +534,7 @@ impl Node {
         for seg in path.segments() {
             // Validate first with an immutable borrow for the error message.
             step(cur, seg, &walked)?;
-            cur = cur.child_mut(seg).ok_or_else(|| CoreError::PathNotFound {
-                path: walked.to_string(),
-            })?;
+            cur = cur.child_mut(seg).ok_or_else(|| CoreError::PathNotFound { path: walked.to_string() })?;
             walked.push(seg.clone());
         }
         Ok(cur)
@@ -573,9 +555,7 @@ impl Node {
                     m.insert(k.clone(), value);
                     Ok(None)
                 } else {
-                    Err(CoreError::PathNotFound {
-                        path: path.to_string(),
-                    })
+                    Err(CoreError::PathNotFound { path: path.to_string() })
                 }
             }
             (Node::Array(a), PathSeg::Index(i)) => {
@@ -586,17 +566,10 @@ impl Node {
                     a.push(value);
                     Ok(None)
                 } else {
-                    Err(CoreError::IndexOutOfBounds {
-                        path: parent_path.to_string(),
-                        index: *i,
-                        len,
-                    })
+                    Err(CoreError::IndexOutOfBounds { path: parent_path.to_string(), index: *i, len })
                 }
             }
-            (other, _) => Err(CoreError::NotAContainer {
-                path: parent_path.to_string(),
-                kind: other.kind().name(),
-            }),
+            (other, _) => Err(CoreError::NotAContainer { path: parent_path.to_string(), kind: other.kind().name() }),
         }
     }
 
@@ -608,24 +581,17 @@ impl Node {
         let parent_path = path.parent().unwrap_or_default();
         let parent = self.resolve_mut(&parent_path)?;
         match (parent, last) {
-            (Node::Map(m), PathSeg::Key(k)) => m.shift_remove(k).ok_or_else(|| CoreError::PathNotFound {
-                path: path.to_string(),
-            }),
+            (Node::Map(m), PathSeg::Key(k)) => {
+                m.shift_remove(k).ok_or_else(|| CoreError::PathNotFound { path: path.to_string() })
+            }
             (Node::Array(a), PathSeg::Index(i)) => {
                 if *i < a.len() {
                     Ok(a.remove(*i))
                 } else {
-                    Err(CoreError::IndexOutOfBounds {
-                        path: parent_path.to_string(),
-                        index: *i,
-                        len: a.len(),
-                    })
+                    Err(CoreError::IndexOutOfBounds { path: parent_path.to_string(), index: *i, len: a.len() })
                 }
             }
-            (other, _) => Err(CoreError::NotAContainer {
-                path: parent_path.to_string(),
-                kind: other.kind().name(),
-            }),
+            (other, _) => Err(CoreError::NotAContainer { path: parent_path.to_string(), kind: other.kind().name() }),
         }
     }
 
@@ -677,14 +643,12 @@ impl Node {
 
 fn step<'a>(cur: &'a Node, seg: &PathSeg, walked: &NodePath) -> CoreResult<&'a Node> {
     match (cur, seg) {
-        (Node::Array(a), PathSeg::Index(i)) => a.get(*i).ok_or_else(|| CoreError::IndexOutOfBounds {
-            path: walked.to_string(),
-            index: *i,
-            len: a.len(),
-        }),
-        (Node::Map(m), PathSeg::Key(k)) => m.get(k).ok_or_else(|| CoreError::PathNotFound {
-            path: walked.key(k.clone()).to_string(),
-        }),
+        (Node::Array(a), PathSeg::Index(i)) => {
+            a.get(*i).ok_or_else(|| CoreError::IndexOutOfBounds { path: walked.to_string(), index: *i, len: a.len() })
+        }
+        (Node::Map(m), PathSeg::Key(k)) => {
+            m.get(k).ok_or_else(|| CoreError::PathNotFound { path: walked.key(k.clone()).to_string() })
+        }
         (Node::Array(_), PathSeg::Key(k)) => Err(CoreError::TypeMismatch {
             path: walked.to_string(),
             expected: format!("map (for key `{k}`)"),
@@ -695,10 +659,7 @@ fn step<'a>(cur: &'a Node, seg: &PathSeg, walked: &NodePath) -> CoreResult<&'a N
             expected: format!("array (for index {i})"),
             found: "map".into(),
         }),
-        (other, _) => Err(CoreError::NotAContainer {
-            path: walked.to_string(),
-            kind: other.kind().name(),
-        }),
+        (other, _) => Err(CoreError::NotAContainer { path: walked.to_string(), kind: other.kind().name() }),
     }
 }
 
@@ -780,10 +741,7 @@ mod tests {
                 Node::map_from([
                     ("Gold", Node::I32(1200)),
                     ("Name", Node::String("Hero".into())),
-                    (
-                        "Inventory",
-                        Node::Array(vec![Node::String("Sword".into()), Node::String("Shield".into())]),
-                    ),
+                    ("Inventory", Node::Array(vec![Node::String("Sword".into()), Node::String("Shield".into())])),
                 ]),
             ),
             ("Version", Node::U16(3)),
@@ -851,16 +809,10 @@ mod tests {
 
     #[test]
     fn numeric_strings() {
-        assert_eq!(
-            parse_numeric_string("1500"),
-            Some((ScalarValue::Int(1500), NumericStringStyle::Integer))
-        );
+        assert_eq!(parse_numeric_string("1500"), Some((ScalarValue::Int(1500), NumericStringStyle::Integer)));
         assert_eq!(parse_numeric_string("007"), None);
         assert_eq!(parse_numeric_string(" 5"), None);
-        assert_eq!(
-            parse_numeric_string("1.25"),
-            Some((ScalarValue::Float(1.25), NumericStringStyle::Fixed(2)))
-        );
+        assert_eq!(parse_numeric_string("1.25"), Some((ScalarValue::Float(1.25), NumericStringStyle::Fixed(2))));
         assert!(parse_numeric_string("1e3").is_some());
         assert!(parse_numeric_string("e").is_none());
         assert!(parse_numeric_string("hello").is_none());
@@ -881,16 +833,7 @@ mod tests {
         let n = sample();
         let leaves = n.leaves();
         let paths: Vec<String> = leaves.iter().map(|(p, _)| p.to_string()).collect();
-        assert_eq!(
-            paths,
-            vec![
-                "Player.Gold",
-                "Player.Name",
-                "Player.Inventory[0]",
-                "Player.Inventory[1]",
-                "Version"
-            ]
-        );
+        assert_eq!(paths, vec!["Player.Gold", "Player.Name", "Player.Inventory[0]", "Player.Inventory[1]", "Version"]);
         let mut count = 0;
         n.walk(|_, _| count += 1);
         assert_eq!(count, n.node_count());

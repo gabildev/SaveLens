@@ -27,10 +27,7 @@ pub fn split(data: &[u8]) -> Vec<ChunkSpan> {
         return Vec::new();
     }
     fastcdc::v2020::FastCDC::new(data, MIN_CHUNK, AVG_CHUNK, MAX_CHUNK)
-        .map(|c| ChunkSpan {
-            offset: c.offset,
-            length: c.length,
-        })
+        .map(|c| ChunkSpan { offset: c.offset, length: c.length })
         .collect()
 }
 
@@ -51,10 +48,7 @@ impl ChunkDir {
     pub fn open(root: &Path, staging: &Path) -> CasResult<ChunkDir> {
         fs::create_dir_all(root).map_err(|e| CasError::io(root, e))?;
         fs::create_dir_all(staging).map_err(|e| CasError::io(staging, e))?;
-        Ok(ChunkDir {
-            root: root.to_path_buf(),
-            staging: staging.to_path_buf(),
-        })
+        Ok(ChunkDir { root: root.to_path_buf(), staging: staging.to_path_buf() })
     }
 
     /// Path of a chunk file.
@@ -98,10 +92,7 @@ impl ChunkDir {
         let data = zstd::bulk::decompress(&compressed, expected_len.max(1))
             .map_err(|e| CasError::Integrity(format!("chunk {hash} cannot be decompressed: {e}")))?;
         if data.len() != expected_len {
-            return Err(CasError::Integrity(format!(
-                "chunk {hash} has {} bytes, expected {expected_len}",
-                data.len()
-            )));
+            return Err(CasError::Integrity(format!("chunk {hash} has {} bytes, expected {expected_len}", data.len())));
         }
         let actual = hash_hex(&data);
         if actual != hash {

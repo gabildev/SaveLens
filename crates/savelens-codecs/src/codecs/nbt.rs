@@ -175,10 +175,7 @@ impl NStr {
                 format!("NBT strings are limited to 65535 encoded bytes, this one needs {}", raw.len()),
             ));
         }
-        Ok(NStr {
-            raw,
-            value: value.to_string(),
-        })
+        Ok(NStr { raw, value: value.to_string() })
     }
 }
 
@@ -373,14 +370,14 @@ impl<'a> Reader<'a> {
 
 /// Parses a root compound starting at `data[0]`; returns the name, entries and consumed size.
 fn parse_root(data: &[u8], flavor: NbtFlavor) -> CodecResult<(NStr, Vec<Entry>, usize)> {
-    let mut rd = Reader {
-        r: ByteReader::new(data, CODEC),
-        flavor,
-        depth: 0,
-    };
+    let mut rd = Reader { r: ByteReader::new(data, CODEC), flavor, depth: 0 };
     let id = rd.r.u8("root tag id")?;
     if id != tag::COMPOUND {
-        return Err(CodecError::malformed(CODEC, 0, format!("root tag is {} ({id}), expected TAG_Compound", tag_name(id))));
+        return Err(CodecError::malformed(
+            CODEC,
+            0,
+            format!("root tag is {} ({id}), expected TAG_Compound", tag_name(id)),
+        ));
     }
     let name = rd.string()?;
     rd.enter()?;
@@ -418,7 +415,8 @@ impl Writer {
     endian_write!(f64, f64);
 
     fn len(&mut self, n: usize, what: &str) -> CodecResult<()> {
-        let v = i32::try_from(n).map_err(|_| CodecError::unsupported(CODEC, format!("{what} with {n} elements exceeds i32")))?;
+        let v = i32::try_from(n)
+            .map_err(|_| CodecError::unsupported(CODEC, format!("{what} with {n} elements exceeds i32")))?;
         self.i32(v);
         Ok(())
     }
@@ -599,12 +597,19 @@ struct Editor {
 }
 
 impl Editor {
-    fn coerce_vec<T>(&self, items: &[Node], path: &mut NodePath, proto: &Node, f: impl Fn(&Node) -> Option<T>) -> CodecResult<Vec<T>> {
+    fn coerce_vec<T>(
+        &self,
+        items: &[Node],
+        path: &mut NodePath,
+        proto: &Node,
+        f: impl Fn(&Node) -> Option<T>,
+    ) -> CodecResult<Vec<T>> {
         let mut out = Vec::with_capacity(items.len());
         for (i, it) in items.iter().enumerate() {
             path.push(PathSeg::Index(i));
             let v = coerce_like(CODEC, path, proto, it)?;
-            let x = f(&v).ok_or_else(|| CodecError::type_mismatch(CODEC, &*path, proto.kind().name(), it.kind().name()))?;
+            let x =
+                f(&v).ok_or_else(|| CodecError::type_mismatch(CODEC, &*path, proto.kind().name(), it.kind().name()))?;
             out.push(x);
             path.pop();
         }
@@ -687,7 +692,11 @@ impl Editor {
                 })?)
             }
             other => {
-                return Err(CodecError::unencodable(CODEC, &*path, format!("cannot build a {} tag here", tag_name(other))));
+                return Err(CodecError::unencodable(
+                    CODEC,
+                    &*path,
+                    format!("cannot build a {} tag here", tag_name(other)),
+                ));
             }
         })
     }
@@ -771,7 +780,9 @@ impl Editor {
                 *t = self.build_leaf(t.id(), node, path)?;
                 Ok(())
             }
-            Tag::Compound(_) | Tag::List { .. } => Err(CodecError::structure(CODEC, &*path, "container reached the leaf editor")),
+            Tag::Compound(_) | Tag::List { .. } => {
+                Err(CodecError::structure(CODEC, &*path, "container reached the leaf editor"))
+            }
             _ => {
                 let v = coerce_like(CODEC, path, &project(t), node)?;
                 *t = scalar_tag(&v, path)?;
@@ -802,14 +813,7 @@ impl NbtDocument {
         let skip = if header.is_some() { 8 } else { 0 };
         let body = data.get(skip..).ok_or_else(|| CodecError::malformed(CODEC, 0, "input shorter than header"))?;
         let (root_name, root, used) = parse_root(body, flavor)?;
-        Ok(NbtDocument {
-            flavor,
-            header,
-            root_name,
-            root,
-            trailing: body[used..].to_vec(),
-            original_root_len: used,
-        })
+        Ok(NbtDocument { flavor, header, root_name, root, trailing: body[used..].to_vec(), original_root_len: used })
     }
 
     /// Parses NBT bytes, detecting Java (big-endian) vs Bedrock (little-endian,
@@ -825,13 +829,7 @@ impl NbtDocument {
             v.copy_from_slice(&data[4..8]);
             let declared_len = i32::from_le_bytes(v);
             if declared_len >= 0 && declared_len as usize <= data.len() - 8 {
-                candidates.push((
-                    NbtFlavor::Bedrock,
-                    Some(BedrockHeader {
-                        storage_version,
-                        declared_len,
-                    }),
-                ));
+                candidates.push((NbtFlavor::Bedrock, Some(BedrockHeader { storage_version, declared_len })));
             }
         }
         candidates.push((NbtFlavor::Java, None));
@@ -885,10 +883,7 @@ impl NbtDocument {
     }
 
     fn encode_root(&self) -> CodecResult<Vec<u8>> {
-        let mut w = Writer {
-            out: Vec::with_capacity(self.original_root_len + 16),
-            big: self.flavor.big_endian(),
-        };
+        let mut w = Writer { out: Vec::with_capacity(self.original_root_len + 16), big: self.flavor.big_endian() };
         w.out.push(tag::COMPOUND);
         w.string(&self.root_name)?;
         w.compound_body(&self.root)?;
@@ -928,8 +923,9 @@ impl Document for NbtDocument {
         let mut out = Vec::with_capacity(body.len() + self.trailing.len() + 8);
         if let Some(h) = self.header {
             let delta = body.len() as i64 - self.original_root_len as i64;
-            let declared = i32::try_from(h.declared_len as i64 + delta)
-                .map_err(|_| CodecError::unsupported(CODEC, "payload too large for the Bedrock level.dat header length"))?;
+            let declared = i32::try_from(h.declared_len as i64 + delta).map_err(|_| {
+                CodecError::unsupported(CODEC, "payload too large for the Bedrock level.dat header length")
+            })?;
             out.extend_from_slice(&h.storage_version.to_le_bytes());
             out.extend_from_slice(&declared.to_le_bytes());
         }
@@ -1077,8 +1073,7 @@ mod tests {
         assert!(doc.header().is_some());
         assert_eq!(doc.encode().unwrap(), data);
         assert_eq!(doc.endianness(), Endianness::Little);
-        doc.apply_ast(&Node::map_from([("abc", Node::I32(9)), ("name", Node::String("x".into()))]))
-            .unwrap();
+        doc.apply_ast(&Node::map_from([("abc", Node::I32(9)), ("name", Node::String("x".into()))])).unwrap();
         let out = doc.encode().unwrap();
         let declared = i32::from_le_bytes([out[4], out[5], out[6], out[7]]);
         assert_eq!(declared as usize, out.len() - 8);
@@ -1099,11 +1094,7 @@ mod tests {
         assert_eq!(doc.encode().unwrap(), full);
         assert_eq!(doc.trailing().len(), 4);
         // Fill the End-typed list: element type inferred from the node.
-        doc.apply_ast(&Node::map_from([
-            ("a", Node::Array(vec![])),
-            ("b", Node::Array(vec![Node::F64(1.5)])),
-        ]))
-        .unwrap();
+        doc.apply_ast(&Node::map_from([("a", Node::Array(vec![])), ("b", Node::Array(vec![Node::F64(1.5)]))])).unwrap();
         let out = doc.encode().unwrap();
         assert!(out.windows(9).any(|w| w == [0x09, 0x00, 0x01, b'b', 0x06, 0, 0, 0, 1]));
         assert!(out.ends_with(&[0, 0, 0, 0]));

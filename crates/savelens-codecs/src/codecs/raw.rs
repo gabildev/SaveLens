@@ -128,12 +128,7 @@ mod tests {
             Node::RawRegion(r) => assert!(r.strings.iter().any(|s| s.text == "HeroName")),
             other => panic!("{other:?}"),
         }
-        let loc = Location::Raw {
-            region: NodePath::root(),
-            offset: 8,
-            ty: ScanType::I32,
-            endian: Endianness::Little,
-        };
+        let loc = Location::Raw { region: NodePath::root(), offset: 8, ty: ScanType::I32, endian: Endianness::Little };
         loc.write(&mut ast, ScalarValue::Int(99999)).unwrap();
         doc.apply_ast(&ast).unwrap();
         let out = doc.encode().unwrap();

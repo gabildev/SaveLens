@@ -3,9 +3,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use savelens_discovery::{
-    discover, DiscoveryConfig, Engine, GameRuntime, HostPlatform, LocationSource, WindowsEnv,
-};
+use savelens_discovery::{discover, DiscoveryConfig, Engine, GameRuntime, HostPlatform, LocationSource, WindowsEnv};
 
 /// A path as written inside a VDF string (backslashes escaped, as Steam does on Windows).
 fn vdf_path(p: &Path) -> String {
@@ -54,68 +52,30 @@ fn fake_steam() -> Fake {
 
     // Native Unity game in the root library.
     manifest(&root, 1000001, "Native Unity Game", "NativeUnity");
-    write(
-        &root.join("steamapps/common/NativeUnity/Game_Data/app.info"),
-        "Company\nProduct",
-    );
-    write(
-        &root.join("steamapps/common/NativeUnity/Game.x86_64"),
-        "elf",
-    );
-    write(
-        &home.join(".config/unity3d/Company/Product/save.dat"),
-        "save",
-    );
+    write(&root.join("steamapps/common/NativeUnity/Game_Data/app.info"), "Company\nProduct");
+    write(&root.join("steamapps/common/NativeUnity/Game.x86_64"), "elf");
+    write(&home.join(".config/unity3d/Company/Product/save.dat"), "save");
 
     // Proton runtime tool: must be skipped.
-    manifest(
-        &root,
-        1493710,
-        "Proton Experimental",
-        "Proton - Experimental",
-    );
-    manifest(
-        &root,
-        228980,
-        "Steamworks Common Redistributables",
-        "Steamworks Shared",
-    );
+    manifest(&root, 1493710, "Proton Experimental", "Proton - Experimental");
+    manifest(&root, 228980, "Steamworks Common Redistributables", "Steamworks Shared");
 
     // Stardew Valley under Proton: installed in library 2, prefix in the root library.
     manifest(&lib2, 413150, "Stardew Valley", "Stardew Valley");
-    write(
-        &lib2.join("steamapps/common/Stardew Valley/Stardew Valley.exe"),
-        "MZ",
-    );
+    write(&lib2.join("steamapps/common/Stardew Valley/Stardew Valley.exe"), "MZ");
     let sdv_user = root.join("steamapps/compatdata/413150/pfx/drive_c/users/steamuser");
-    write(
-        &sdv_user.join("AppData/Roaming/StardewValley/Saves/Farmer_123/Farmer_123"),
-        "<SaveGame/>",
-    );
-    write(
-        &sdv_user.join("AppData/Roaming/StardewValley/Saves/Farmer_123/SaveGameInfo"),
-        "<Farmer/>",
-    );
+    write(&sdv_user.join("AppData/Roaming/StardewValley/Saves/Farmer_123/Farmer_123"), "<SaveGame/>");
+    write(&sdv_user.join("AppData/Roaming/StardewValley/Saves/Farmer_123/SaveGameInfo"), "<Farmer/>");
 
     // Unreal game under Proton, everything in library 2.
     manifest(&lib2, 1000002, "Unreal Proton Game", "UnrealGame");
-    write(
-        &lib2.join(
-            "steamapps/common/UnrealGame/MyProject/Binaries/Win64/MyProject-Win64-Shipping.exe",
-        ),
-        "MZ",
-    );
+    write(&lib2.join("steamapps/common/UnrealGame/MyProject/Binaries/Win64/MyProject-Win64-Shipping.exe"), "MZ");
     write(
         &lib2.join("steamapps/compatdata/1000002/pfx/drive_c/users/steamuser/AppData/Local/MyProject/Saved/SaveGames/Slot1.sav"),
         "GVAS",
     );
 
-    Fake {
-        _tmp: tmp,
-        home,
-        root,
-        lib2,
-    }
+    Fake { _tmp: tmp, home, root, lib2 }
 }
 
 fn linux_cfg(home: &Path) -> DiscoveryConfig {
@@ -149,72 +109,37 @@ fn discovers_native_proton_and_unreal_games() {
     let unity = report.game_by_app_id(1000001).unwrap();
     assert_eq!(unity.runtime, GameRuntime::Native);
     assert_eq!(unity.engine, Some(Engine::Unity));
-    assert_eq!(
-        unity.install_dir.as_deref(),
-        Some(f.root.join("steamapps/common/NativeUnity").as_path())
-    );
+    assert_eq!(unity.install_dir.as_deref(), Some(f.root.join("steamapps/common/NativeUnity").as_path()));
     assert_eq!(unity.save_locations.len(), 1);
     let loc = &unity.save_locations[0];
     assert_eq!(loc.root, f.home.join(".config/unity3d/Company/Product"));
-    assert_eq!(
-        loc.source,
-        LocationSource::EngineHeuristic {
-            engine: Engine::Unity
-        }
-    );
+    assert_eq!(loc.source, LocationSource::EngineHeuristic { engine: Engine::Unity });
     assert_eq!(loc.files, vec![loc.root.join("save.dat")]);
 
     // Stardew Valley through Proton, prefix found in another library, rule-based location.
     let sdv = report.game_by_app_id(413150).unwrap();
     let prefix = f.root.join("steamapps/compatdata/413150/pfx");
-    assert_eq!(
-        sdv.runtime,
-        GameRuntime::Proton {
-            prefix: prefix.clone()
-        }
-    );
+    assert_eq!(sdv.runtime, GameRuntime::Proton { prefix: prefix.clone() });
     assert_eq!(sdv.engine, None);
     assert_eq!(sdv.save_locations.len(), 1);
     let loc = &sdv.save_locations[0];
     let saves = prefix.join("drive_c/users/steamuser/AppData/Roaming/StardewValley/Saves");
     assert_eq!(loc.root, saves);
-    assert_eq!(
-        loc.source,
-        LocationSource::Rule {
-            rule: "stardew-valley".to_string()
-        }
-    );
-    assert_eq!(
-        loc.files,
-        vec![
-            saves.join("Farmer_123/Farmer_123"),
-            saves.join("Farmer_123/SaveGameInfo")
-        ]
-    );
+    assert_eq!(loc.source, LocationSource::Rule { rule: "stardew-valley".to_string() });
+    assert_eq!(loc.files, vec![saves.join("Farmer_123/Farmer_123"), saves.join("Farmer_123/SaveGameInfo")]);
 
     // Unreal game through Proton.
     let ue = report.game_by_app_id(1000002).unwrap();
     let ue_prefix = f.lib2.join("steamapps/compatdata/1000002/pfx");
-    assert_eq!(
-        ue.runtime,
-        GameRuntime::Proton {
-            prefix: ue_prefix.clone()
-        }
-    );
+    assert_eq!(ue.runtime, GameRuntime::Proton { prefix: ue_prefix.clone() });
     assert_eq!(ue.engine, Some(Engine::Unreal));
-    let ue_saves =
-        ue_prefix.join("drive_c/users/steamuser/AppData/Local/MyProject/Saved/SaveGames");
+    let ue_saves = ue_prefix.join("drive_c/users/steamuser/AppData/Local/MyProject/Saved/SaveGames");
     assert_eq!(ue.save_locations.len(), 1);
     assert_eq!(ue.save_locations[0].root, ue_saves);
     assert_eq!(ue.save_locations[0].files, vec![ue_saves.join("Slot1.sav")]);
 
     // Path → game lookup.
-    assert_eq!(
-        report
-            .game_for_path(&ue_saves.join("Slot1.sav"))
-            .and_then(|g| g.app_id),
-        Some(1000002)
-    );
+    assert_eq!(report.game_for_path(&ue_saves.join("Slot1.sav")).and_then(|g| g.app_id), Some(1000002));
 
     // The report serializes.
     let json = serde_json::to_string(&report).unwrap();
@@ -252,31 +177,19 @@ fn flatpak_root_and_old_libraryfolders_format() {
         ),
     );
     manifest(&lib, 646570, "Slay the Spire", "SlayTheSpire");
-    write(
-        &lib.join("steamapps/common/SlayTheSpire/saves/IRONCLAD.autosave"),
-        "x",
-    );
+    write(&lib.join("steamapps/common/SlayTheSpire/saves/IRONCLAD.autosave"), "x");
     // Broken manifest → warning, not failure.
-    write(
-        &lib.join("steamapps/appmanifest_5.acf"),
-        "\"AppState\" { \"appid\" ",
-    );
+    write(&lib.join("steamapps/appmanifest_5.acf"), "\"AppState\" { \"appid\" ");
 
     let report = discover(&linux_cfg(&home)).unwrap();
     assert_eq!(report.steam_roots, vec![root.clone()]);
     assert_eq!(report.libraries.len(), 2);
     assert!(report.warnings.iter().any(|w| w.contains("missing_lib")));
-    assert!(report
-        .warnings
-        .iter()
-        .any(|w| w.contains("appmanifest_5.acf")));
+    assert!(report.warnings.iter().any(|w| w.contains("appmanifest_5.acf")));
     let sts = report.game_by_app_id(646570).unwrap();
     assert_eq!(sts.runtime, GameRuntime::Native);
     assert_eq!(sts.save_locations.len(), 1);
-    assert_eq!(
-        sts.save_locations[0].root,
-        lib.join("steamapps/common/SlayTheSpire/saves")
-    );
+    assert_eq!(sts.save_locations[0].root, lib.join("steamapps/common/SlayTheSpire/saves"));
     assert_eq!(sts.save_locations[0].files.len(), 1);
 }
 
@@ -293,23 +206,10 @@ fn windows_placeholders_resolve_against_windows_env() {
 
     let mut env = WindowsEnv::under_profile(&profile, &base.join("Users/Public"));
     env.app_data = base.join("Roaming");
-    write(
-        &env.app_data.join("StardewValley/Saves/Abby_1/Abby_1"),
-        "<x/>",
-    );
-    write(
-        &env.app_data.join("EldenRing/76561198000000000/ER0000.sl2"),
-        "BND4",
-    );
-    write(
-        &env.app_data
-            .join("EldenRing/76561198000000000/steam_autocloud.vdf"),
-        "x",
-    );
-    write(
-        &env.app_data.join("EldenRing/76561198000000001/ER0000.sl2"),
-        "BND4",
-    );
+    write(&env.app_data.join("StardewValley/Saves/Abby_1/Abby_1"), "<x/>");
+    write(&env.app_data.join("EldenRing/76561198000000000/ER0000.sl2"), "BND4");
+    write(&env.app_data.join("EldenRing/76561198000000000/steam_autocloud.vdf"), "x");
+    write(&env.app_data.join("EldenRing/76561198000000001/ER0000.sl2"), "BND4");
 
     let mut cfg = DiscoveryConfig::for_home(profile.clone());
     cfg.host = HostPlatform::Windows;
@@ -320,44 +220,28 @@ fn windows_placeholders_resolve_against_windows_env() {
     let sdv = report.game_by_app_id(413150).unwrap();
     assert_eq!(sdv.runtime, GameRuntime::Native);
     assert_eq!(sdv.save_locations.len(), 1);
-    assert_eq!(
-        sdv.save_locations[0].root,
-        env.app_data.join("StardewValley/Saves")
-    );
+    assert_eq!(sdv.save_locations[0].root, env.app_data.join("StardewValley/Saves"));
     assert_eq!(sdv.save_locations[0].files.len(), 1);
 
     let er = report.game_by_app_id(1245620).unwrap();
     let roots: Vec<&PathBuf> = er.save_locations.iter().map(|l| &l.root).collect();
     assert_eq!(
         roots,
-        vec![
-            &env.app_data.join("EldenRing/76561198000000000"),
-            &env.app_data.join("EldenRing/76561198000000001")
-        ]
+        vec![&env.app_data.join("EldenRing/76561198000000000"), &env.app_data.join("EldenRing/76561198000000001")]
     );
     // `ER0000.*` pattern excludes steam_autocloud.vdf.
-    assert_eq!(
-        er.save_locations[0].files,
-        vec![env.app_data.join("EldenRing/76561198000000000/ER0000.sl2")]
-    );
+    assert_eq!(er.save_locations[0].files, vec![env.app_data.join("EldenRing/76561198000000000/ER0000.sl2")]);
 
     // The Linux-only rule path is not applied on a Windows host.
     write(&profile.join(".config/StardewValley/Saves/x"), "x");
     let report = discover(&cfg).unwrap();
-    assert_eq!(
-        report.game_by_app_id(413150).unwrap().save_locations.len(),
-        1
-    );
+    assert_eq!(report.game_by_app_id(413150).unwrap().save_locations.len(), 1);
 }
 
 #[test]
 fn user_rules_override_and_extend() {
     let f = fake_steam();
-    write(
-        &f.root
-            .join("steamapps/common/NativeUnity/CustomSaves/slot.bin"),
-        "x",
-    );
+    write(&f.root.join("steamapps/common/NativeUnity/CustomSaves/slot.bin"), "x");
     let rules = f.home.join("my_rules.toml");
     write(
         &rules,
@@ -368,17 +252,9 @@ fn user_rules_override_and_extend() {
     let report = discover(&cfg).unwrap();
     let g = report.game_by_app_id(1000001).unwrap();
     assert_eq!(g.save_locations.len(), 1);
-    assert_eq!(
-        g.save_locations[0].source,
-        LocationSource::Rule {
-            rule: "native-unity".to_string()
-        }
-    );
+    assert_eq!(g.save_locations[0].source, LocationSource::Rule { rule: "native-unity".to_string() });
     assert_eq!(g.save_locations[0].files.len(), 1);
 
-    write(
-        &rules,
-        "[[game]]\nid = \"broken\"\nname = \"B\"\npaths = [{ path = \"<what>/x\" }]\n",
-    );
+    write(&rules, "[[game]]\nid = \"broken\"\nname = \"B\"\npaths = [{ path = \"<what>/x\" }]\n");
     assert!(discover(&cfg).is_err());
 }

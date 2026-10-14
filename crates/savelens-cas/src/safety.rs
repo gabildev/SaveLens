@@ -101,10 +101,7 @@ impl Store {
     /// Writes `bytes` to `target` atomically (staging + rename) or in place
     /// when rename crosses filesystems. Never creates files next to `target`.
     pub fn atomic_replace(&self, target: &Path, bytes: &[u8]) -> CasResult<WriteMethod> {
-        let name = target
-            .file_name()
-            .map(|n| n.to_string_lossy().to_string())
-            .unwrap_or_else(|| "file".into());
+        let name = target.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_else(|| "file".into());
         let n = STAGE_COUNTER.fetch_add(1, Ordering::Relaxed);
         let tmp = self.staging.join(format!("stage-{}-{n}-{name}", std::process::id()));
         {
@@ -204,7 +201,9 @@ impl Store {
             );
             match res {
                 Ok(_) => break,
-                Err(rusqlite::Error::SqliteFailure(err, _)) if err.code == rusqlite::ErrorCode::ConstraintViolation && attempt < 1000 => {
+                Err(rusqlite::Error::SqliteFailure(err, _))
+                    if err.code == rusqlite::ErrorCode::ConstraintViolation && attempt < 1000 =>
+                {
                     attempt += 1;
                     tag = format!("{base_tag}-{attempt}");
                 }
@@ -225,7 +224,14 @@ impl Store {
         })
     }
 
-    fn record_mutation(&self, safety: &SafetyBackup, path: &Path, new_blob: &str, reason: &str, is_panic: bool) -> CasResult<MutationRecord> {
+    fn record_mutation(
+        &self,
+        safety: &SafetyBackup,
+        path: &Path,
+        new_blob: &str,
+        reason: &str,
+        is_panic: bool,
+    ) -> CasResult<MutationRecord> {
         let created_at = now_ms();
         let g = self.inner.lock();
         g.conn.execute(
@@ -287,7 +293,13 @@ impl Store {
     }
 
     /// Mutates a file in a game directory following the full safety protocol.
-    pub fn safe_write(&self, game: Option<GameId>, path: &Path, bytes: &[u8], reason: &str) -> CasResult<MutationRecord> {
+    pub fn safe_write(
+        &self,
+        game: Option<GameId>,
+        path: &Path,
+        bytes: &[u8],
+        reason: &str,
+    ) -> CasResult<MutationRecord> {
         let safety = self.capture_safety(game, path, reason)?;
         self.write_verified(path, bytes, &safety)?;
         let new_blob = self.put_blob(bytes)?;
@@ -327,10 +339,9 @@ impl Store {
             })
         };
         let rec = match scope {
-            PanicScope::Latest => g
-                .conn
-                .query_row(&format!("{base} ORDER BY m.id DESC LIMIT 1"), [], map)
-                .optional()?,
+            PanicScope::Latest => {
+                g.conn.query_row(&format!("{base} ORDER BY m.id DESC LIMIT 1"), [], map).optional()?
+            }
             PanicScope::Game(id) => g
                 .conn
                 .query_row(&format!("{base} AND s.game_id = ?1 ORDER BY m.id DESC LIMIT 1"), params![id], map)
@@ -383,11 +394,7 @@ impl Store {
             g.conn.execute("UPDATE mutations SET restored = 1 WHERE id = ?1", params![m.id])?;
         }
         self.record_mutation(&replaced, &path, &m.safety.blob, "panic-restore", true)?;
-        self.log_event(
-            m.safety.game_id,
-            "panic-restore",
-            &format!("{} restored to {}", path.display(), m.safety.tag),
-        )?;
+        self.log_event(m.safety.game_id, "panic-restore", &format!("{} restored to {}", path.display(), m.safety.tag))?;
         Ok(PanicReport {
             path,
             restored_tag: m.safety.tag.clone(),
@@ -410,9 +417,8 @@ impl Store {
                 rows
             }
             None => {
-                let mut stmt = g
-                    .conn
-                    .prepare(&format!("SELECT {SAFETY_COLS} FROM safety_backups ORDER BY id DESC LIMIT ?1"))?;
+                let mut stmt =
+                    g.conn.prepare(&format!("SELECT {SAFETY_COLS} FROM safety_backups ORDER BY id DESC LIMIT ?1"))?;
                 let rows = stmt.query_map(params![limit as i64], row_safety)?.collect::<Result<Vec<_>, _>>()?;
                 rows
             }
@@ -426,10 +432,7 @@ impl Store {
         g.conn
             .query_row(&format!("SELECT {SAFETY_COLS} FROM safety_backups WHERE tag = ?1"), params![tag], row_safety)
             .optional()?
-            .ok_or_else(|| CasError::NotFound {
-                kind: "safety backup",
-                id: tag.to_string(),
-            })
+            .ok_or_else(|| CasError::NotFound { kind: "safety backup", id: tag.to_string() })
     }
 
     /// Restores a specific safety backup (itself protected by a new backup).

@@ -28,7 +28,9 @@ use base64::engine::general_purpose::STANDARD;
 use base64::Engine;
 use savelens_core::{Node, NodeMap, NodePath, PathSeg};
 
-use crate::document::{apply_via_diff, coerce_like, Capabilities, Confidence, DetectContext, Document, PathEditable, StructuralCodec};
+use crate::document::{
+    apply_via_diff, coerce_like, Capabilities, Confidence, DetectContext, Document, PathEditable, StructuralCodec,
+};
 use crate::error::{CodecError, CodecResult};
 
 const CODEC: &str = "playerprefs";
@@ -144,10 +146,8 @@ struct Tag {
 
 fn parse_tag(raw: &str, offset: usize) -> CodecResult<Tag> {
     let err = |r: &str| CodecError::malformed(CODEC, offset, r.to_string());
-    let inner = raw
-        .strip_prefix('<')
-        .and_then(|s| s.strip_suffix('>'))
-        .ok_or_else(|| err("tag is not delimited by < >"))?;
+    let inner =
+        raw.strip_prefix('<').and_then(|s| s.strip_suffix('>')).ok_or_else(|| err("tag is not delimited by < >"))?;
     let (inner, self_closing) = match inner.strip_suffix('/') {
         Some(s) => (s, true),
         None => (inner, false),
@@ -174,7 +174,11 @@ fn parse_tag(raw: &str, offset: usize) -> CodecResult<Tag> {
         let key = &trimmed[..key_end];
         let after_key = trimmed[key_end..].trim_start();
         let after_eq = after_key.strip_prefix('=').ok_or_else(|| err("attribute without `=`"))?.trim_start();
-        let quote = after_eq.chars().next().filter(|c| *c == '"' || *c == '\'').ok_or_else(|| err("unquoted attribute value"))?;
+        let quote = after_eq
+            .chars()
+            .next()
+            .filter(|c| *c == '"' || *c == '\'')
+            .ok_or_else(|| err("unquoted attribute value"))?;
         let body = &after_eq[1..];
         let close = body.find(quote).ok_or_else(|| err("unterminated attribute value"))?;
         let value = unescape(&body[..close]).ok_or_else(|| err("invalid entity in attribute value"))?;
@@ -295,7 +299,8 @@ impl<'a> Scanner<'a> {
 impl PlayerPrefsDocument {
     /// Parses PlayerPrefs XML.
     pub fn parse(bytes: &[u8]) -> CodecResult<PlayerPrefsDocument> {
-        let src = std::str::from_utf8(bytes).map_err(|e| CodecError::malformed(CODEC, e.valid_up_to(), "file is not valid UTF-8"))?;
+        let src = std::str::from_utf8(bytes)
+            .map_err(|e| CodecError::malformed(CODEC, e.valid_up_to(), "file is not valid UTF-8"))?;
         let mut sc = Scanner { src, pos: 0 };
         if sc.rest().starts_with('\u{feff}') {
             sc.pos += '\u{feff}'.len_utf8();
@@ -341,13 +346,7 @@ impl PlayerPrefsDocument {
         if !epilog.trim_matches([' ', '\t', '\r', '\n', '\0']).is_empty() {
             return Err(CodecError::malformed(CODEC, sc.pos, "content after the root element"));
         }
-        Ok(PlayerPrefsDocument {
-            prolog,
-            root_start,
-            items,
-            root_end,
-            epilog,
-        })
+        Ok(PlayerPrefsDocument { prolog, root_start, items, root_end, epilog })
     }
 
     fn parse_pref(sc: &mut Scanner<'_>) -> CodecResult<Pref> {
@@ -377,17 +376,10 @@ impl PlayerPrefsDocument {
             }
             (raw, end.to_string())
         };
-        let text = unescape(&raw_value).ok_or_else(|| CodecError::malformed(CODEC, at, "invalid entity in pref value"))?;
+        let text =
+            unescape(&raw_value).ok_or_else(|| CodecError::malformed(CODEC, at, "invalid entity in pref value"))?;
         let (kind, value) = classify(&type_attr, &text);
-        Ok(Pref {
-            start_tag,
-            self_closing: tag.self_closing,
-            raw_value,
-            end_tag,
-            name,
-            kind,
-            value,
-        })
+        Ok(Pref { start_tag, self_closing: tag.self_closing, raw_value, end_tag, name, kind, value })
     }
 
     /// Serialises the document.
@@ -454,12 +446,13 @@ impl Pref {
         let v = coerce_like(CODEC, path, &self.value, value)?;
         let text = match (self.kind, &v) {
             (ValueKind::Int, Node::I32(i)) => i.to_string(),
-            (ValueKind::Float, Node::F32(f)) => {
-                render_f32(*f).ok_or_else(|| CodecError::unencodable(CODEC, path, "PlayerPrefs floats must be finite"))?
-            }
+            (ValueKind::Float, Node::F32(f)) => render_f32(*f)
+                .ok_or_else(|| CodecError::unencodable(CODEC, path, "PlayerPrefs floats must be finite"))?,
             (ValueKind::Base64, Node::String(s)) => STANDARD.encode(s.as_bytes()),
             (ValueKind::Text, Node::String(s)) => escape_text(s),
-            (_, other) => return Err(CodecError::type_mismatch(CODEC, path, self.value.kind().name(), other.kind().name())),
+            (_, other) => {
+                return Err(CodecError::type_mismatch(CODEC, path, self.value.kind().name(), other.kind().name()))
+            }
         };
         if self.self_closing && !text.is_empty() {
             let body = self.start_tag.strip_suffix("/>").unwrap_or(&self.start_tag).trim_end();
@@ -548,7 +541,9 @@ impl StructuralCodec for PlayerPrefsCodec {
 
     fn detect(&self, bytes: &[u8], _ctx: &DetectContext) -> Confidence {
         let body = bytes.strip_prefix(&[0xef, 0xbb, 0xbf]).unwrap_or(bytes);
-        if body.iter().find(|b| !b.is_ascii_whitespace()) != Some(&b'<') || !body.windows(ROOT.len()).any(|w| w == ROOT.as_bytes()) {
+        if body.iter().find(|b| !b.is_ascii_whitespace()) != Some(&b'<')
+            || !body.windows(ROOT.len()).any(|w| w == ROOT.as_bytes())
+        {
             return 0;
         }
         if PlayerPrefsDocument::parse(bytes).is_ok() {

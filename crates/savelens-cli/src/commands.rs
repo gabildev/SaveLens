@@ -5,12 +5,10 @@ use std::time::Duration;
 use anyhow::{anyhow, bail, Context, Result};
 use savelens_cas::{format_ts, CommitKind, GameRecord, PanicScope};
 use savelens_core::{
-    Alignment, CherryPickMode, CherryPickOptions, Endianness, Location, Node, NodePath, ScalarValue, ScanConfig, ScanFilter,
-    ScanSession, ScanType,
+    Alignment, CherryPickMode, CherryPickOptions, Endianness, Location, Node, NodePath, ScalarValue, ScanConfig,
+    ScanFilter, ScanSession, ScanType,
 };
-use savelens_watcher::{
-    Daemon, DaemonEvent, DaemonOptions, EditTarget, Engine, FileStatus, SaveLensConfig, WORKING,
-};
+use savelens_watcher::{Daemon, DaemonEvent, DaemonOptions, EditTarget, Engine, FileStatus, SaveLensConfig, WORKING};
 
 use crate::cli::{AlignArg, Cli, Command, EndianArg, ScanArgs};
 use crate::style::*;
@@ -36,13 +34,10 @@ fn print_json<T: serde::Serialize>(v: &T) -> Result<()> {
 /// `$@420:u8`).
 pub fn parse_location(s: &str) -> Result<Location> {
     let Some((region, rest)) = s.rsplit_once('@') else {
-        return Ok(Location::Ast {
-            path: NodePath::parse(s)?,
-        });
+        return Ok(Location::Ast { path: NodePath::parse(s)? });
     };
-    let (off, ty) = rest
-        .split_once(':')
-        .ok_or_else(|| anyhow!("raw location `{s}` needs a type, e.g. `$@0x1a4:i32le`"))?;
+    let (off, ty) =
+        rest.split_once(':').ok_or_else(|| anyhow!("raw location `{s}` needs a type, e.g. `$@0x1a4:i32le`"))?;
     let offset = if let Some(h) = off.strip_prefix("0x").or_else(|| off.strip_prefix("0X")) {
         u64::from_str_radix(h, 16)?
     } else {
@@ -57,12 +52,7 @@ pub fn parse_location(s: &str) -> Result<Location> {
         (lower.clone(), Endianness::Little)
     };
     let ty: ScanType = name.parse()?;
-    Ok(Location::Raw {
-        region: NodePath::parse(region)?,
-        offset,
-        ty,
-        endian,
-    })
+    Ok(Location::Raw { region: NodePath::parse(region)?, offset, ty, endian })
 }
 
 fn kind_badge(k: CommitKind) -> String {
@@ -106,7 +96,11 @@ fn print_tree(node: &Node, label: &str, depth: usize, max_depth: usize, indent: 
             }
         }
         Node::RawRegion(r) => {
-            println!("{pad}{} {}", bold(label), dim(&format!("<raw region {} bytes, {} strings>", r.len(), r.strings.len())));
+            println!(
+                "{pad}{} {}",
+                bold(label),
+                dim(&format!("<raw region {} bytes, {} strings>", r.len(), r.strings.len()))
+            );
             for s in r.strings.iter().take(10) {
                 println!("{pad}  {} {:?}", dim(&format!("@{:#06x}", s.offset)), s.text);
             }
@@ -142,19 +136,21 @@ fn run_scan(engine: &Engine, a: &ScanArgs, json: bool) -> Result<()> {
     let g = game(engine, &a.game)?;
     let mut session = ScanSession::new(scan_config(a)?);
     for (i, step) in a.steps.iter().enumerate() {
-        let (rev, filter_s) = step
-            .split_once('=')
-            .ok_or_else(|| anyhow!("scan step `{step}` must be REV=FILTER, e.g. HEAD~1=1500"))?;
+        let (rev, filter_s) =
+            step.split_once('=').ok_or_else(|| anyhow!("scan step `{step}` must be REV=FILTER, e.g. HEAD~1=1500"))?;
         let filter = ScanFilter::parse(filter_s)?;
         let opened = engine.open_version(g.id, rev, &a.file)?;
         let root = if a.raw { opened.into_raw_mode().root() } else { opened.root() };
-        let n = if i == 0 {
-            session.first_scan(&root, &filter, rev)?
-        } else {
-            session.next_scan(&root, &filter, rev)?
-        };
+        let n =
+            if i == 0 { session.first_scan(&root, &filter, rev)? } else { session.next_scan(&root, &filter, rev)? };
         if !json {
-            println!("{} {:<10} {:<22} → {} candidate(s)", dim(&format!("#{i}")), rev, filter.to_string(), bold(&n.to_string()));
+            println!(
+                "{} {:<10} {:<22} → {} candidate(s)",
+                dim(&format!("#{i}")),
+                rev,
+                filter.to_string(),
+                bold(&n.to_string())
+            );
         }
     }
     let cands = session.candidates(0, a.limit);
@@ -199,12 +195,7 @@ pub fn run(cli: Cli) -> Result<()> {
             let engine = open_engine(&cli)?;
             run_gui(engine)
         }
-        Command::Overlay {
-            game: g,
-            opacity,
-            no_daemon,
-            no_hotkeys,
-        } => {
+        Command::Overlay { game: g, opacity, no_daemon, no_hotkeys } => {
             let engine = open_engine(&cli)?;
             let game_id = match g {
                 Some(q) => Some(game(&engine, q)?.id),
@@ -245,7 +236,13 @@ pub fn run(cli: Cli) -> Result<()> {
                     dim(&g.engine.map(|e| format!("{e:?}")).unwrap_or_default())
                 );
                 for (i, l) in g.save_locations.iter().enumerate() {
-                    println!("   {} {} ({} files) {}", dim(&format!("#{i}")), l.root.display(), l.files.len(), dim(&format!("{:?}", l.source)));
+                    println!(
+                        "   {} {} ({} files) {}",
+                        dim(&format!("#{i}")),
+                        l.root.display(),
+                        l.files.len(),
+                        dim(&format!("{:?}", l.source))
+                    );
                     if *track_all {
                         match engine.track_discovered(g, i) {
                             Ok((rec, _)) => println!("     {} tracked as game #{}", green("✔"), rec.id),
@@ -282,16 +279,18 @@ pub fn run(cli: Cli) -> Result<()> {
             }
             Ok(())
         }
-        Command::Track {
-            name,
-            dir,
-            patterns,
-            app_id,
-        } => {
+        Command::Track { name, dir, patterns, app_id } => {
             let engine = open_engine(&cli)?;
             let (g, c) = engine.track(name, *app_id, dir, patterns, "manual")?;
             let files = engine.tracked_files(&g)?;
-            println!("{} tracking {} (#{}) at {} — {} file(s)", green("✔"), bold(&g.name), g.id, g.save_root.display(), files.len());
+            println!(
+                "{} tracking {} (#{}) at {} — {} file(s)",
+                green("✔"),
+                bold(&g.name),
+                g.id,
+                g.save_root.display(),
+                files.len()
+            );
             if let Some(c) = c {
                 println!("  import commit #{}: {}", c.id, c.summary);
             }
@@ -471,22 +470,15 @@ pub fn run(cli: Cli) -> Result<()> {
             print_tree(node, &p.to_string(), 0, 4, 0);
             Ok(())
         }
-        Command::Edit {
-            game: q,
-            file,
-            target,
-            value,
-            raw,
-        } => {
+        Command::Edit { game: q, file, target, value, raw } => {
             let engine = open_engine(&cli)?;
             let g = game(&engine, q)?;
             let loc = parse_location(target)?;
             let t = match loc {
                 Location::Ast { path } => EditTarget::Path { path, value: value.clone() },
-                raw_loc @ Location::Raw { .. } => EditTarget::Location {
-                    location: raw_loc,
-                    value: ScalarValue::parse(value)?,
-                },
+                raw_loc @ Location::Raw { .. } => {
+                    EditTarget::Location { location: raw_loc, value: ScalarValue::parse(value)? }
+                }
             };
             let allow_raw = *raw || matches!(t, EditTarget::Location { .. });
             let rep = engine.edit_value(g.id, file, &t, allow_raw)?;
@@ -497,12 +489,7 @@ pub fn run(cli: Cli) -> Result<()> {
             let engine = open_engine(&cli)?;
             run_scan(&engine, a, json)
         }
-        Command::Pin {
-            game: q,
-            file,
-            alias,
-            location,
-        } => {
+        Command::Pin { game: q, file, alias, location } => {
             let engine = open_engine(&cli)?;
             let g = game(&engine, q)?;
             let loc = parse_location(location)?;
@@ -525,7 +512,14 @@ pub fn run(cli: Cli) -> Result<()> {
                     (false, Some(f)) => dim(&format!("freeze off ({f})")),
                     _ => String::new(),
                 };
-                println!("  {:<16} {:>14}  {}  {} {}", bold(&v.entry.alias), green(&cur), frozen, dim(&v.entry.location.to_string()), dim(&v.entry.rel_path));
+                println!(
+                    "  {:<16} {:>14}  {}  {} {}",
+                    bold(&v.entry.alias),
+                    green(&cur),
+                    frozen,
+                    dim(&v.entry.location.to_string()),
+                    dim(&v.entry.rel_path)
+                );
                 if let Some(e) = v.error {
                     println!("    {}", red(&e));
                 }
@@ -568,20 +562,19 @@ pub fn run(cli: Cli) -> Result<()> {
             if *apply && on {
                 for f in engine.tracked_files(&g)? {
                     if let Some(rep) = engine.inject_trainer(g.id, &f.rel_path)? {
-                        println!("  {} {}: {} in {:.1} ms", green("✔"), rep.rel_path, rep.applied.join(", "), rep.elapsed_ms);
+                        println!(
+                            "  {} {}: {} in {:.1} ms",
+                            green("✔"),
+                            rep.rel_path,
+                            rep.applied.join(", "),
+                            rep.elapsed_ms
+                        );
                     }
                 }
             }
             Ok(())
         }
-        Command::CherryPick {
-            game: q,
-            rev,
-            file,
-            paths,
-            merge,
-            strict,
-        } => {
+        Command::CherryPick { game: q, rev, file, paths, merge, strict } => {
             let engine = open_engine(&cli)?;
             let g = game(&engine, q)?;
             let paths = paths.iter().map(|p| NodePath::parse(p)).collect::<Result<Vec<_>, _>>()?;
@@ -599,26 +592,30 @@ pub fn run(cli: Cli) -> Result<()> {
             let g = game(&engine, q)?;
             let sel = if files.is_empty() { None } else { Some(files.as_slice()) };
             let rep = engine.checkout(g.id, rev, sel)?;
-            println!("{} restored #{}: {} written, {} unchanged", green("✔"), rep.target, rep.written.len(), rep.unchanged.len());
+            println!(
+                "{} restored #{}: {} written, {} unchanged",
+                green("✔"),
+                rep.target,
+                rep.written.len(),
+                rep.unchanged.len()
+            );
             for (f, t) in rep.written.iter().zip(&rep.safety_tags) {
                 println!("  {f}  {}", dim(&format!("backup {t}")));
             }
             Ok(())
         }
-        Command::Branch {
-            game: q,
-            name,
-            from,
-            switch,
-            delete,
-        } => {
+        Command::Branch { game: q, name, from, switch, delete } => {
             let engine = open_engine(&cli)?;
             let g = game(&engine, q)?;
             match name {
                 None => {
                     for b in engine.store().branches(g.id)? {
                         let mark = if b.name == g.current_branch { green("*") } else { " ".into() };
-                        println!("{mark} {} {}", bold(&b.name), dim(&b.head.map(|h| format!("#{h}")).unwrap_or_else(|| "(empty)".into())));
+                        println!(
+                            "{mark} {} {}",
+                            bold(&b.name),
+                            dim(&b.head.map(|h| format!("#{h}")).unwrap_or_else(|| "(empty)".into()))
+                        );
                     }
                 }
                 Some(n) if *delete => {
@@ -627,7 +624,12 @@ pub fn run(cli: Cli) -> Result<()> {
                 }
                 Some(n) => {
                     let b = engine.create_branch(g.id, n, from.as_deref())?;
-                    println!("{} branch {} at {}", green("✔"), b.name, b.head.map(|h| format!("#{h}")).unwrap_or_default());
+                    println!(
+                        "{} branch {} at {}",
+                        green("✔"),
+                        b.name,
+                        b.head.map(|h| format!("#{h}")).unwrap_or_default()
+                    );
                     if *switch {
                         let rep = engine.switch_branch(g.id, n)?;
                         println!("  switched ({} file(s) written)", rep.written.len());
@@ -680,7 +682,11 @@ pub fn run(cli: Cli) -> Result<()> {
             };
             let rep = engine.panic_restore(&scope)?;
             if rep.removed {
-                println!("{} {} removed (it did not exist before SaveLens touched it)", red("PANIC RESTORE"), rep.path.display());
+                println!(
+                    "{} {} removed (it did not exist before SaveLens touched it)",
+                    red("PANIC RESTORE"),
+                    rep.path.display()
+                );
             } else {
                 println!(
                     "{} {} restored to {} (blake3 {})",
@@ -724,7 +730,12 @@ pub fn run(cli: Cli) -> Result<()> {
         Command::RestoreBackup { tag } => {
             let engine = open_engine(&cli)?;
             let m = engine.store().restore_safety_tag(tag)?;
-            println!("{} {} restored from {tag} (previous state kept as {})", green("✔"), m.abs_path.display(), m.safety.tag);
+            println!(
+                "{} {} restored from {tag} (previous state kept as {})",
+                green("✔"),
+                m.abs_path.display(),
+                m.safety.tag
+            );
             Ok(())
         }
         Command::Gc => {
@@ -818,14 +829,7 @@ fn watch(engine: Engine, games: Option<Vec<i64>>, hotkeys: bool, json: bool) -> 
         let _ = tx.try_send(());
     })
     .context("cannot install the Ctrl+C handler")?;
-    let handle = Daemon::spawn(
-        engine,
-        DaemonOptions {
-            hotkeys,
-            games,
-            ..DaemonOptions::default()
-        },
-    )?;
+    let handle = Daemon::spawn(engine, DaemonOptions { hotkeys, games, ..DaemonOptions::default() })?;
     loop {
         crossbeam_channel::select! {
             recv(rx) -> _ => break,
@@ -853,19 +857,20 @@ fn print_event(ev: &DaemonEvent) {
             }
             s
         }
-        DaemonEvent::Watching { game, root } => format!("{} {} {}", cyan("watch"), bold(game), dim(&root.display().to_string())),
+        DaemonEvent::Watching { game, root } => {
+            format!("{} {} {}", cyan("watch"), bold(game), dim(&root.display().to_string()))
+        }
         DaemonEvent::Unwatched { game } => format!("{} {game}", dim("unwatch")),
         DaemonEvent::Committed { game, rel_path, commit, summary, .. } => {
             format!("{} {} {} #{commit} {}", cyan("commit"), bold(game), rel_path, green(summary))
         }
         DaemonEvent::Unchanged { game, rel_path } => format!("{} {game} {rel_path}", dim("same")),
-        DaemonEvent::TrainerApplied {
-            game,
-            rel_path,
-            applied,
-            elapsed_ms,
-        } => format!("{} {} {} {} in {elapsed_ms:.1} ms", magenta("trainer"), bold(game), rel_path, applied.join(", ")),
-        DaemonEvent::Locked { path } => format!("{} {} (read-only snapshot, no injection)", yellow("locked"), path.display()),
+        DaemonEvent::TrainerApplied { game, rel_path, applied, elapsed_ms } => {
+            format!("{} {} {} {} in {elapsed_ms:.1} ms", magenta("trainer"), bold(game), rel_path, applied.join(", "))
+        }
+        DaemonEvent::Locked { path } => {
+            format!("{} {} (read-only snapshot, no injection)", yellow("locked"), path.display())
+        }
         DaemonEvent::PanicRestored { path, tag } => format!("{} {} → {tag}", red("PANIC RESTORE"), path.display()),
         DaemonEvent::Snapshot { game, commit } => format!(
             "{} {game} {}",
@@ -873,7 +878,9 @@ fn print_event(ev: &DaemonEvent) {
             commit.map(|c| format!("#{c}")).unwrap_or_else(|| "nothing changed".into())
         ),
         DaemonEvent::Rollback { game, files } => format!("{} {game} {}", yellow("rollback"), files.join(", ")),
-        DaemonEvent::TrainerToggled { game, enabled } => format!("{} {game} {}", magenta("trainer"), if *enabled { "ON" } else { "off" }),
+        DaemonEvent::TrainerToggled { game, enabled } => {
+            format!("{} {game} {}", magenta("trainer"), if *enabled { "ON" } else { "off" })
+        }
         DaemonEvent::OverlayToggleRequested => dim("overlay toggle requested"),
         DaemonEvent::Warning { message } => yellow(&format!("! {message}")),
         DaemonEvent::Error { message } => red(&format!("✘ {message}")),
@@ -906,12 +913,7 @@ fn run_gui(_engine: Engine) -> Result<()> {
 fn run_overlay(engine: Engine, game: Option<i64>, opacity: f32, daemon: bool, hotkeys: bool) -> Result<()> {
     savelens_overlay::run(
         engine,
-        savelens_overlay::OverlayOptions {
-            game,
-            opacity: opacity.clamp(0.2, 1.0),
-            embedded_daemon: daemon,
-            hotkeys,
-        },
+        savelens_overlay::OverlayOptions { game, opacity: opacity.clamp(0.2, 1.0), embedded_daemon: daemon, hotkeys },
     )
 }
 
@@ -928,18 +930,11 @@ mod tests {
     fn locations_parse() {
         assert_eq!(
             parse_location("Player.Gold").unwrap(),
-            Location::Ast {
-                path: NodePath::parse("Player.Gold").unwrap()
-            }
+            Location::Ast { path: NodePath::parse("Player.Gold").unwrap() }
         );
         assert_eq!(
             parse_location("$@0x1a4:i32le").unwrap(),
-            Location::Raw {
-                region: NodePath::root(),
-                offset: 0x1a4,
-                ty: ScanType::I32,
-                endian: Endianness::Little
-            }
+            Location::Raw { region: NodePath::root(), offset: 0x1a4, ty: ScanType::I32, endian: Endianness::Little }
         );
         assert_eq!(
             parse_location("Blob@16:f32be").unwrap(),

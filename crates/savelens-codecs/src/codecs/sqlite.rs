@@ -87,9 +87,7 @@ impl Scratch {
     /// Creates a fresh directory in the system temp dir and writes `bytes`
     /// into it.
     fn with_bytes(bytes: &[u8]) -> CodecResult<(Scratch, PathBuf)> {
-        let dir = tempfile::Builder::new()
-            .prefix("savelens-sqlite-")
-            .tempdir()?;
+        let dir = tempfile::Builder::new().prefix("savelens-sqlite-").tempdir()?;
         let path = dir.path().to_path_buf();
         SCRATCH_LOG.with(|log| {
             let mut log = log.borrow_mut();
@@ -123,30 +121,16 @@ fn parse_header(bytes: &[u8]) -> CodecResult<Header> {
         });
     }
     if &bytes[..16] != MAGIC {
-        return Err(CodecError::malformed(
-            CODEC,
-            0,
-            "missing `SQLite format 3` magic",
-        ));
+        return Err(CodecError::malformed(CODEC, 0, "missing `SQLite format 3` magic"));
     }
     let raw = u16::from_be_bytes([bytes[16], bytes[17]]);
     let page_size = match raw {
         1 => 65_536,
         n if (512..=32_768).contains(&n) && n.is_power_of_two() => u32::from(n),
-        n => {
-            return Err(CodecError::malformed(
-                CODEC,
-                16,
-                format!("invalid page size {n}"),
-            ))
-        }
+        n => return Err(CodecError::malformed(CODEC, 16, format!("invalid page size {n}"))),
     };
     let encoding = u32::from_be_bytes([bytes[56], bytes[57], bytes[58], bytes[59]]);
-    Ok(Header {
-        page_size,
-        wal: bytes[18] == 2 || bytes[19] == 2,
-        encoding,
-    })
+    Ok(Header { page_size, wal: bytes[18] == 2 || bytes[19] == 2, encoding })
 }
 
 fn encoding_name(code: u32) -> &'static str {
@@ -180,9 +164,7 @@ fn immutable_uri(path: &Path) -> String {
 
 /// Opens a private copy read-only (no locks, no WAL/SHM files).
 fn open_read_only(path: &Path) -> CodecResult<Connection> {
-    let flags = OpenFlags::SQLITE_OPEN_READ_ONLY
-        | OpenFlags::SQLITE_OPEN_URI
-        | OpenFlags::SQLITE_OPEN_NO_MUTEX;
+    let flags = OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_URI | OpenFlags::SQLITE_OPEN_NO_MUTEX;
     Ok(Connection::open_with_flags(immutable_uri(path), flags)?)
 }
 
@@ -263,11 +245,7 @@ fn node_to_value(path: &NodePath, node: &Node) -> CodecResult<Value> {
         Node::U16(v) => Value::Integer(i64::from(*v)),
         Node::U32(v) => Value::Integer(i64::from(*v)),
         Node::U64(v) => Value::Integer(i64::try_from(*v).map_err(|_| {
-            CodecError::unencodable(
-                CODEC,
-                path,
-                format!("{v} does not fit a 64-bit signed SQLite INTEGER"),
-            )
+            CodecError::unencodable(CODEC, path, format!("{v} does not fit a 64-bit signed SQLite INTEGER"))
         })?),
         Node::F32(v) => Value::Real(f64::from(*v)),
         Node::F64(v) => Value::Real(*v),
@@ -275,12 +253,7 @@ fn node_to_value(path: &NodePath, node: &Node) -> CodecResult<Value> {
         Node::Bytes(b) => Value::Blob(b.clone()),
         Node::RawRegion(r) => Value::Blob(r.bytes.clone()),
         Node::Array(_) | Node::Map(_) => {
-            return Err(CodecError::type_mismatch(
-                CODEC,
-                path,
-                "SQLite scalar",
-                node.kind().name(),
-            ));
+            return Err(CodecError::type_mismatch(CODEC, path, "SQLite scalar", node.kind().name()));
         }
     })
 }
@@ -370,20 +343,10 @@ fn load_tables(conn: &Connection) -> CodecResult<TableList> {
 
 fn load_table(conn: &Connection, name: &str, without_rowid: bool) -> CodecResult<(Table, NodeMap)> {
     let mut st = conn.prepare("SELECT name, pk FROM pragma_table_info(?1, 'main') ORDER BY cid")?;
-    let columns: Vec<Column> = st
-        .query_map([name], |r| {
-            Ok(Column {
-                name: r.get(0)?,
-                pk: r.get(1)?,
-            })
-        })?
-        .collect::<Result<_, _>>()?;
+    let columns: Vec<Column> =
+        st.query_map([name], |r| Ok(Column { name: r.get(0)?, pk: r.get(1)? }))?.collect::<Result<_, _>>()?;
     if columns.is_empty() {
-        return Err(CodecError::malformed(
-            CODEC,
-            0,
-            format!("table `{name}` has no readable columns"),
-        ));
+        return Err(CodecError::malformed(CODEC, 0, format!("table `{name}` has no readable columns")));
     }
     let mut pk: Vec<usize> = (0..columns.len()).filter(|&i| columns[i].pk > 0).collect();
     pk.sort_by_key(|&i| columns[i].pk);
@@ -391,61 +354,37 @@ fn load_table(conn: &Connection, name: &str, without_rowid: bool) -> CodecResult
     let rowid_name = if without_rowid {
         None
     } else {
-        let lower: Vec<String> = columns
-            .iter()
-            .map(|c| c.name.to_ascii_lowercase())
-            .collect();
-        let pick = ["rowid", "_rowid_", "oid"]
-            .into_iter()
-            .find(|n| !lower.iter().any(|c| c == n));
+        let lower: Vec<String> = columns.iter().map(|c| c.name.to_ascii_lowercase()).collect();
+        let pick = ["rowid", "_rowid_", "oid"].into_iter().find(|n| !lower.iter().any(|c| c == n));
         match pick {
             Some(p) => Some(p),
-            None => return Err(CodecError::unsupported(
-                CODEC,
-                format!(
-                    "table `{name}` shadows every rowid alias (rowid, _rowid_, oid) with a column"
-                ),
-            )),
+            None => {
+                return Err(CodecError::unsupported(
+                    CODEC,
+                    format!("table `{name}` shadows every rowid alias (rowid, _rowid_, oid) with a column"),
+                ))
+            }
         }
     };
     if without_rowid && pk.is_empty() {
-        return Err(CodecError::malformed(
-            CODEC,
-            0,
-            format!("WITHOUT ROWID table `{name}` has no primary key"),
-        ));
+        return Err(CodecError::malformed(CODEC, 0, format!("WITHOUT ROWID table `{name}` has no primary key")));
     }
     // A single-column primary key of a rowid table aliases the rowid unless
     // SQLite had to build an automatic index for it.
     let rowid_alias = if !without_rowid && pk.len() == 1 {
-        let mut st =
-            conn.prepare("SELECT count(*) FROM pragma_index_list(?1, 'main') WHERE origin = 'pk'")?;
+        let mut st = conn.prepare("SELECT count(*) FROM pragma_index_list(?1, 'main') WHERE origin = 'pk'")?;
         let n: i64 = st.query_row([name], |r| r.get(0))?;
         (n == 0).then_some(pk[0])
     } else {
         None
     };
 
-    let cols_sql = columns
-        .iter()
-        .map(|c| quote_ident(&c.name))
-        .collect::<Vec<_>>()
-        .join(", ");
+    let cols_sql = columns.iter().map(|c| quote_ident(&c.name)).collect::<Vec<_>>().join(", ");
     let sql = match rowid_name {
-        Some(r) => format!(
-            "SELECT {r}, {cols_sql} FROM main.{} ORDER BY {r}",
-            quote_ident(name)
-        ),
+        Some(r) => format!("SELECT {r}, {cols_sql} FROM main.{} ORDER BY {r}", quote_ident(name)),
         None => {
-            let order = pk
-                .iter()
-                .map(|&i| quote_ident(&columns[i].name))
-                .collect::<Vec<_>>()
-                .join(", ");
-            format!(
-                "SELECT {cols_sql} FROM main.{} ORDER BY {order}",
-                quote_ident(name)
-            )
+            let order = pk.iter().map(|&i| quote_ident(&columns[i].name)).collect::<Vec<_>>().join(", ");
+            format!("SELECT {cols_sql} FROM main.{} ORDER BY {order}", quote_ident(name))
         }
     };
     let offset = usize::from(rowid_name.is_some());
@@ -464,10 +403,7 @@ fn load_table(conn: &Connection, name: &str, without_rowid: bool) -> CodecResult
                 (rid.to_string(), RowId::Rowid(rid))
             }
             None => {
-                let vals: Vec<Value> = pk
-                    .iter()
-                    .map(|&i| r.get_ref(i).map(owned))
-                    .collect::<Result<_, _>>()?;
+                let vals: Vec<Value> = pk.iter().map(|&i| r.get_ref(i).map(owned)).collect::<Result<_, _>>()?;
                 (pk_key(&vals), RowId::Pk(vals))
             }
         };
@@ -479,15 +415,7 @@ fn load_table(conn: &Connection, name: &str, without_rowid: bool) -> CodecResult
         }
         map.insert(key, Node::Map(row));
     }
-    let table = Table {
-        name: name.to_string(),
-        without_rowid,
-        columns,
-        pk,
-        rowid_name,
-        rowid_alias,
-        rows,
-    };
+    let table = Table { name: name.to_string(), without_rowid, columns, pk, rowid_name, rowid_alias, rows };
     Ok((table, map))
 }
 
@@ -527,16 +455,9 @@ impl Projection {
         let conn = open_read_only(&path)?;
         let check: String = conn.query_row("PRAGMA quick_check(1)", [], |r| r.get(0))?;
         if check != "ok" {
-            return Err(CodecError::malformed(
-                CODEC,
-                0,
-                format!("database failed quick_check: {check}"),
-            ));
+            return Err(CodecError::malformed(CODEC, 0, format!("database failed quick_check: {check}")));
         }
-        let TableList {
-            tables: names,
-            skipped,
-        } = load_tables(&conn)?;
+        let TableList { tables: names, skipped } = load_tables(&conn)?;
         let mut root = NodeMap::new();
         let mut tables = Vec::new();
         let mut rows = 0;
@@ -547,13 +468,7 @@ impl Projection {
             tables.push(table);
         }
         drop(conn);
-        Ok(Projection {
-            header,
-            tables,
-            ast: Node::Map(root),
-            rows,
-            skipped,
-        })
+        Ok(Projection { header, tables, ast: Node::Map(root), rows, skipped })
     }
 }
 
@@ -578,10 +493,7 @@ impl SqliteDocument {
     /// Parses a database image.
     pub fn parse(bytes: &[u8]) -> CodecResult<SqliteDocument> {
         let proj = Projection::load(bytes)?;
-        Ok(SqliteDocument {
-            bytes: bytes.to_vec(),
-            proj,
-        })
+        Ok(SqliteDocument { bytes: bytes.to_vec(), proj })
     }
 
     /// Current database file bytes.
@@ -597,11 +509,7 @@ impl SqliteDocument {
     fn plan(&self, edited: &Node) -> CodecResult<Vec<Stmt>> {
         let current = &self.proj.ast;
         if !matches!(edited, Node::Map(_)) {
-            return Err(CodecError::structure(
-                CODEC,
-                "$",
-                "the root must stay a map of tables",
-            ));
+            return Err(CodecError::structure(CODEC, "$", "the root must stay a map of tables"));
         }
         let d = diff(current, edited);
         let mut deletes = Vec::new();
@@ -611,20 +519,10 @@ impl SqliteDocument {
             let segs = c.path.segments();
             let keys: Vec<&str> = segs.iter().filter_map(PathSeg::as_key).collect();
             if keys.len() != segs.len() {
-                return Err(CodecError::structure(
-                    CODEC,
-                    &c.path,
-                    "SQLite projections only contain maps",
-                ));
+                return Err(CodecError::structure(CODEC, &c.path, "SQLite projections only contain maps"));
             }
             match (keys.as_slice(), &c.kind) {
-                ([], _) => {
-                    return Err(CodecError::structure(
-                        CODEC,
-                        &c.path,
-                        "the root must stay a map of tables",
-                    ))
-                }
+                ([], _) => return Err(CodecError::structure(CODEC, &c.path, "the root must stay a map of tables")),
                 ([_], ChangeKind::Added { .. }) => {
                     return Err(CodecError::structure(
                         CODEC,
@@ -639,26 +537,10 @@ impl SqliteDocument {
                         "removing tables is not supported (the schema is never altered)",
                     ))
                 }
-                ([_], _) => {
-                    return Err(CodecError::structure(
-                        CODEC,
-                        &c.path,
-                        "a table must stay a map of rows",
-                    ))
-                }
-                ([t, r], ChangeKind::Added { new }) => {
-                    inserts.push(self.plan_insert(&c.path, t, r, new)?)
-                }
-                ([t, r], ChangeKind::Removed { .. }) => {
-                    deletes.push(self.plan_delete(&c.path, t, r)?)
-                }
-                ([_, _], _) => {
-                    return Err(CodecError::structure(
-                        CODEC,
-                        &c.path,
-                        "a row must stay a map of columns",
-                    ))
-                }
+                ([_], _) => return Err(CodecError::structure(CODEC, &c.path, "a table must stay a map of rows")),
+                ([t, r], ChangeKind::Added { new }) => inserts.push(self.plan_insert(&c.path, t, r, new)?),
+                ([t, r], ChangeKind::Removed { .. }) => deletes.push(self.plan_delete(&c.path, t, r)?),
+                ([_, _], _) => return Err(CodecError::structure(CODEC, &c.path, "a row must stay a map of columns")),
                 ([_, _, _], ChangeKind::Added { .. }) => {
                     return Err(CodecError::structure(
                         CODEC,
@@ -674,18 +556,10 @@ impl SqliteDocument {
                     ))
                 }
                 ([t, r, col], _) => {
-                    let new = edited
-                        .get(&c.path)
-                        .ok_or_else(|| CodecError::path_not_found(CODEC, &c.path))?;
+                    let new = edited.get(&c.path).ok_or_else(|| CodecError::path_not_found(CODEC, &c.path))?;
                     updates.push(self.plan_update(&c.path, t, r, col, new)?);
                 }
-                _ => {
-                    return Err(CodecError::structure(
-                        CODEC,
-                        &c.path,
-                        "SQLite cells are scalars",
-                    ))
-                }
+                _ => return Err(CodecError::structure(CODEC, &c.path, "SQLite cells are scalars")),
             }
         }
         deletes.extend(updates);
@@ -694,44 +568,24 @@ impl SqliteDocument {
     }
 
     fn known_table(&self, path: &NodePath, name: &str) -> CodecResult<&Table> {
-        self.table(name)
-            .ok_or_else(|| CodecError::path_not_found(CODEC, path))
+        self.table(name).ok_or_else(|| CodecError::path_not_found(CODEC, path))
     }
 
     fn plan_delete(&self, path: &NodePath, t: &str, r: &str) -> CodecResult<Stmt> {
         let table = self.known_table(path, t)?;
-        let id = table
-            .rows
-            .get(r)
-            .ok_or_else(|| CodecError::path_not_found(CODEC, path))?;
+        let id = table.rows.get(r).ok_or_else(|| CodecError::path_not_found(CODEC, path))?;
         Ok(Stmt {
-            sql: format!(
-                "DELETE FROM main.{} WHERE {}",
-                quote_ident(&table.name),
-                table.where_clause()
-            ),
+            sql: format!("DELETE FROM main.{} WHERE {}", quote_ident(&table.name), table.where_clause()),
             params: Table::where_params(id),
             expect: 1,
             path: path.clone(),
         })
     }
 
-    fn plan_update(
-        &self,
-        path: &NodePath,
-        t: &str,
-        r: &str,
-        col: &str,
-        new: &Node,
-    ) -> CodecResult<Stmt> {
+    fn plan_update(&self, path: &NodePath, t: &str, r: &str, col: &str, new: &Node) -> CodecResult<Stmt> {
         let table = self.known_table(path, t)?;
-        let id = table
-            .rows
-            .get(r)
-            .ok_or_else(|| CodecError::path_not_found(CODEC, path))?;
-        let ci = table
-            .column(col)
-            .ok_or_else(|| CodecError::path_not_found(CODEC, path))?;
+        let id = table.rows.get(r).ok_or_else(|| CodecError::path_not_found(CODEC, path))?;
+        let ci = table.column(col).ok_or_else(|| CodecError::path_not_found(CODEC, path))?;
         if table.columns[ci].pk > 0 {
             return Err(CodecError::structure(
                 CODEC,
@@ -757,12 +611,7 @@ impl SqliteDocument {
     fn plan_insert(&self, path: &NodePath, t: &str, r: &str, new: &Node) -> CodecResult<Stmt> {
         let table = self.known_table(path, t)?;
         let Node::Map(row) = new else {
-            return Err(CodecError::type_mismatch(
-                CODEC,
-                path,
-                "map (row)",
-                new.kind().name(),
-            ));
+            return Err(CodecError::type_mismatch(CODEC, path, "map (row)", new.kind().name()));
         };
         let mut cols: Vec<String> = Vec::new();
         let mut params: Vec<Value> = Vec::new();
@@ -772,10 +621,7 @@ impl SqliteDocument {
                 CodecError::structure(
                     CODEC,
                     &cp,
-                    format!(
-                        "table `{}` has no column `{name}` (the schema is never altered)",
-                        table.name
-                    ),
+                    format!("table `{}` has no column `{name}` (the schema is never altered)", table.name),
                 )
             })?;
             let val = node_to_value(&cp, v)?;
@@ -798,17 +644,9 @@ impl SqliteDocument {
         }
         match table.rowid_name {
             Some(rowid) if !table.without_rowid => {
-                let rid: i64 = r
-                    .parse()
-                    .ok()
-                    .filter(|v: &i64| v.to_string() == r)
-                    .ok_or_else(|| {
-                        CodecError::structure(
-                            CODEC,
-                            path,
-                            "row keys of rowid tables must be canonical decimal integers",
-                        )
-                    })?;
+                let rid: i64 = r.parse().ok().filter(|v: &i64| v.to_string() == r).ok_or_else(|| {
+                    CodecError::structure(CODEC, path, "row keys of rowid tables must be canonical decimal integers")
+                })?;
                 cols.insert(0, rowid.to_string());
                 params.insert(0, Value::Integer(rid));
             }
@@ -817,11 +655,7 @@ impl SqliteDocument {
                 for &i in &table.pk {
                     let name = &table.columns[i].name;
                     let v = row.get(name).ok_or_else(|| {
-                        CodecError::structure(
-                            CODEC,
-                            path,
-                            format!("new row must provide primary-key column `{name}`"),
-                        )
+                        CodecError::structure(CODEC, path, format!("new row must provide primary-key column `{name}`"))
                     })?;
                     pk_vals.push(node_to_value(&path.key(name.clone()), v)?);
                 }
@@ -830,32 +664,18 @@ impl SqliteDocument {
                     return Err(CodecError::structure(
                         CODEC,
                         path,
-                        format!(
-                            "row key must match the primary-key values (expected `{expected}`)"
-                        ),
+                        format!("row key must match the primary-key values (expected `{expected}`)"),
                     ));
                 }
             }
         }
         let sql = if cols.is_empty() {
-            format!(
-                "INSERT INTO main.{} DEFAULT VALUES",
-                quote_ident(&table.name)
-            )
+            format!("INSERT INTO main.{} DEFAULT VALUES", quote_ident(&table.name))
         } else {
             let marks = vec!["?"; cols.len()].join(", ");
-            format!(
-                "INSERT INTO main.{} ({}) VALUES ({marks})",
-                quote_ident(&table.name),
-                cols.join(", ")
-            )
+            format!("INSERT INTO main.{} ({}) VALUES ({marks})", quote_ident(&table.name), cols.join(", "))
         };
-        Ok(Stmt {
-            sql,
-            params,
-            expect: 1,
-            path: path.clone(),
-        })
+        Ok(Stmt { sql, params, expect: 1, path: path.clone() })
     }
 
     /// Runs the statements on a private read-write copy and returns the new
@@ -874,10 +694,7 @@ impl SqliteDocument {
                     return Err(CodecError::malformed(
                         CODEC,
                         0,
-                        format!(
-                            "edit at `{}` affected {n} row(s) instead of {}",
-                            s.path, s.expect
-                        ),
+                        format!("edit at `{}` affected {n} row(s) instead of {}", s.path, s.expect),
                     ));
                 }
             }
@@ -886,11 +703,7 @@ impl SqliteDocument {
         if self.proj.header.wal {
             let busy: i64 = conn.query_row("PRAGMA wal_checkpoint(TRUNCATE)", [], |r| r.get(0))?;
             if busy != 0 {
-                return Err(CodecError::malformed(
-                    CODEC,
-                    0,
-                    "WAL checkpoint could not complete",
-                ));
+                return Err(CodecError::malformed(CODEC, 0, "WAL checkpoint could not complete"));
             }
         }
         conn.close().map_err(|(_, e)| e)?;
@@ -945,10 +758,7 @@ impl Document for SqliteDocument {
             encoding_name(h.encoding)
         )];
         if !self.proj.skipped.is_empty() {
-            notes.push(format!(
-                "not projected (virtual/shadow tables): {}",
-                self.proj.skipped.join(", ")
-            ));
+            notes.push(format!("not projected (virtual/shadow tables): {}", self.proj.skipped.join(", ")));
         }
         notes
     }
@@ -1015,10 +825,7 @@ mod tests {
     fn header_and_detect() {
         let db = sample();
         assert_eq!(SqliteCodec.detect(&db, &DetectContext::default()), 95);
-        assert_eq!(
-            SqliteCodec.detect(b"SQLite format 3\0", &DetectContext::default()),
-            0
-        );
+        assert_eq!(SqliteCodec.detect(b"SQLite format 3\0", &DetectContext::default()), 0);
         let mut bad = db.clone();
         bad[16] = 0;
         bad[17] = 3;
@@ -1035,9 +842,7 @@ mod tests {
         assert_eq!(ast.get(&p("p/1/name")), Some(&Node::String("Hero".into())));
         assert_eq!(ast.get(&p("p/2/gold")), Some(&Node::I64(50)));
         assert_eq!(ast.get(&p("p/2/id")), Some(&Node::I64(2)));
-        let Some(Node::Map(kv)) = ast.get(&p("kv")) else {
-            panic!()
-        };
+        let Some(Node::Map(kv)) = ast.get(&p("kv")) else { panic!() };
         let keys: Vec<&String> = kv.keys().collect();
         assert_eq!(keys, vec!["a\\|b", "c\\\\d"]);
         assert_eq!(kv["a\\|b"].get(&p("v")), Some(&Node::Bytes(vec![1, 2])));
@@ -1059,18 +864,8 @@ mod tests {
         ast.set(&p("p/1/gold"), Node::I32(9999), false).unwrap();
         ast.set(&p("p/1/name"), Node::Bool(true), false).unwrap();
         ast.remove(&p("p/2")).unwrap();
-        ast.set(
-            &p("p/7"),
-            Node::map_from([("name", Node::String("New".into()))]),
-            true,
-        )
-        .unwrap();
-        ast.set(
-            &p("kv/z"),
-            Node::map_from([("k", Node::String("z".into())), ("v", Node::F64(1.5))]),
-            true,
-        )
-        .unwrap();
+        ast.set(&p("p/7"), Node::map_from([("name", Node::String("New".into()))]), true).unwrap();
+        ast.set(&p("kv/z"), Node::map_from([("k", Node::String("z".into())), ("v", Node::F64(1.5))]), true).unwrap();
         doc.apply_ast(&ast).unwrap();
         let out = doc.to_ast();
         assert_eq!(out.get(&p("p/1/gold")), Some(&Node::I64(9999)));
@@ -1116,8 +911,7 @@ mod tests {
                 a.set(&p("p/1/id"), Node::I64(50), false).unwrap();
             }),
             Box::new(|a| {
-                a.set(&p("kv/a\\|b/k"), Node::String("q".into()), false)
-                    .unwrap();
+                a.set(&p("kv/a\\|b/k"), Node::String("q".into()), false).unwrap();
             }),
             Box::new(|a| {
                 a.set(&p("p/1/gold"), Node::Array(vec![]), false).unwrap();
@@ -1126,12 +920,7 @@ mod tests {
                 a.set(&p("p/007"), Node::map(), true).unwrap();
             }),
             Box::new(|a| {
-                a.set(
-                    &p("kv/wrong"),
-                    Node::map_from([("k", Node::String("z".into()))]),
-                    true,
-                )
-                .unwrap();
+                a.set(&p("kv/wrong"), Node::map_from([("k", Node::String("z".into()))]), true).unwrap();
             }),
             Box::new(|a| {
                 a.set(&p("p/1/gold"), Node::U64(u64::MAX), false).unwrap();

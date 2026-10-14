@@ -112,17 +112,11 @@ fn leaf_hash(tag: u8, payload: &[u8]) -> Hash32 {
 
 fn blocks(tag: u8, bytes: &[u8]) -> MerkleTree {
     if bytes.len() <= BYTES_BLOCK_SIZE {
-        return MerkleTree {
-            hash: leaf_hash(tag, bytes),
-            children: Vec::new(),
-        };
+        return MerkleTree { hash: leaf_hash(tag, bytes), children: Vec::new() };
     }
     let children: Vec<MerkleTree> = bytes
         .chunks(BYTES_BLOCK_SIZE)
-        .map(|c| MerkleTree {
-            hash: leaf_hash(TAG_BLOCK, c),
-            children: Vec::new(),
-        })
+        .map(|c| MerkleTree { hash: leaf_hash(TAG_BLOCK, c), children: Vec::new() })
         .collect();
     let mut h = blake3::Hasher::new();
     h.update(&[tag]);
@@ -130,17 +124,11 @@ fn blocks(tag: u8, bytes: &[u8]) -> MerkleTree {
     for c in &children {
         h.update(&c.hash.0);
     }
-    MerkleTree {
-        hash: Hash32(*h.finalize().as_bytes()),
-        children,
-    }
+    MerkleTree { hash: Hash32(*h.finalize().as_bytes()), children }
 }
 
 fn build(node: &Node) -> MerkleTree {
-    let leaf = |tag: u8, payload: &[u8]| MerkleTree {
-        hash: leaf_hash(tag, payload),
-        children: Vec::new(),
-    };
+    let leaf = |tag: u8, payload: &[u8]| MerkleTree { hash: leaf_hash(tag, payload), children: Vec::new() };
     match node {
         Node::Null => leaf(TAG_NULL, &[]),
         Node::Bool(b) => leaf(TAG_BOOL, &[*b as u8]),
@@ -166,10 +154,7 @@ fn build(node: &Node) -> MerkleTree {
             for c in &children {
                 h.update(&c.hash.0);
             }
-            MerkleTree {
-                hash: Hash32(*h.finalize().as_bytes()),
-                children,
-            }
+            MerkleTree { hash: Hash32(*h.finalize().as_bytes()), children }
         }
         Node::Map(map) => {
             let children: Vec<MerkleTree> = map.values().map(build).collect();
@@ -181,10 +166,7 @@ fn build(node: &Node) -> MerkleTree {
                 h.update(k.as_bytes());
                 h.update(&c.hash.0);
             }
-            MerkleTree {
-                hash: Hash32(*h.finalize().as_bytes()),
-                children,
-            }
+            MerkleTree { hash: Hash32(*h.finalize().as_bytes()), children }
         }
     }
 }

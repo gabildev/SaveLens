@@ -32,11 +32,8 @@ const TOOL_APP_IDS: &[u32] = &[
     858280,  // Proton 3.7
 ];
 
-const TOOL_NAME_PREFIXES: &[&str] = &[
-    "Steam Linux Runtime",
-    "Steamworks Common Redistributables",
-    "Steamworks SDK Redist",
-];
+const TOOL_NAME_PREFIXES: &[&str] =
+    &["Steam Linux Runtime", "Steamworks Common Redistributables", "Steamworks SDK Redist"];
 
 /// True for Steam tools (Proton, runtimes, redistributables) that must not be listed as games.
 pub fn is_steam_tool(app_id: u32, name: &str) -> bool {
@@ -67,14 +64,7 @@ pub fn detect_steam_roots(cfg: &DiscoveryConfig) -> Vec<PathBuf> {
             let flatpak = h.join(".var").join("app").join("com.valvesoftware.Steam");
             candidates.push(flatpak.join(".local").join("share").join("Steam"));
             candidates.push(flatpak.join("data").join("Steam"));
-            candidates.push(
-                h.join("snap")
-                    .join("steam")
-                    .join("common")
-                    .join(".local")
-                    .join("share")
-                    .join("Steam"),
-            );
+            candidates.push(h.join("snap").join("steam").join("common").join(".local").join("share").join("Steam"));
         }
         HostPlatform::Windows => {
             candidates.extend(registry_steam_roots());
@@ -104,27 +94,12 @@ fn registry_steam_roots() -> Vec<PathBuf> {
     use winreg::RegKey;
     let mut out = Vec::new();
     let lookups: [(RegKey, &str, &str); 3] = [
-        (
-            RegKey::predef(HKEY_CURRENT_USER),
-            r"Software\Valve\Steam",
-            "SteamPath",
-        ),
-        (
-            RegKey::predef(HKEY_LOCAL_MACHINE),
-            r"SOFTWARE\WOW6432Node\Valve\Steam",
-            "InstallPath",
-        ),
-        (
-            RegKey::predef(HKEY_LOCAL_MACHINE),
-            r"SOFTWARE\Valve\Steam",
-            "InstallPath",
-        ),
+        (RegKey::predef(HKEY_CURRENT_USER), r"Software\Valve\Steam", "SteamPath"),
+        (RegKey::predef(HKEY_LOCAL_MACHINE), r"SOFTWARE\WOW6432Node\Valve\Steam", "InstallPath"),
+        (RegKey::predef(HKEY_LOCAL_MACHINE), r"SOFTWARE\Valve\Steam", "InstallPath"),
     ];
     for (hive, key, value) in lookups {
-        match hive
-            .open_subkey(key)
-            .and_then(|k| k.get_value::<String, _>(value))
-        {
+        match hive.open_subkey(key).and_then(|k| k.get_value::<String, _>(value)) {
             Ok(path) if !path.is_empty() => out.push(PathBuf::from(path.replace('/', "\\"))),
             Ok(_) => {}
             Err(e) => tracing::debug!(key, value, error = %e, "Steam registry value not available"),
@@ -150,17 +125,11 @@ pub(crate) struct LibraryEntry {
 
 /// Reads the library folders of every root (both `steamapps/` and `config/`
 /// `libraryfolders.vdf`, new and old format). The root itself is always a library.
-pub(crate) fn collect_libraries(
-    roots: &[PathBuf],
-    warnings: &mut Vec<String>,
-) -> Vec<LibraryEntry> {
+pub(crate) fn collect_libraries(roots: &[PathBuf], warnings: &mut Vec<String>) -> Vec<LibraryEntry> {
     let mut libs: Vec<LibraryEntry> = Vec::new();
     let add = |libs: &mut Vec<LibraryEntry>, entry: LibraryEntry, warnings: &mut Vec<String>| {
         if !entry.path.join("steamapps").is_dir() {
-            warnings.push(format!(
-                "Steam library {} has no steamapps directory",
-                entry.path.display()
-            ));
+            warnings.push(format!("Steam library {} has no steamapps directory", entry.path.display()));
             return;
         }
         let path = normalize_path(&entry.path);
@@ -178,16 +147,10 @@ pub(crate) fn collect_libraries(
         }
     };
     for root in roots {
-        let mut entries = vec![LibraryEntry {
-            path: root.clone(),
-            label: None,
-            listed_apps: Vec::new(),
-            root: root.clone(),
-        }];
-        for file in [
-            root.join("steamapps").join("libraryfolders.vdf"),
-            root.join("config").join("libraryfolders.vdf"),
-        ] {
+        let mut entries =
+            vec![LibraryEntry { path: root.clone(), label: None, listed_apps: Vec::new(), root: root.clone() }];
+        for file in [root.join("steamapps").join("libraryfolders.vdf"), root.join("config").join("libraryfolders.vdf")]
+        {
             let text = match fs::read_to_string(&file) {
                 Ok(t) => t,
                 Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
@@ -212,15 +175,10 @@ pub(crate) fn collect_libraries(
 }
 
 /// Parses `libraryfolders.vdf` (new nested format and the old `"1" "D:\\Games"` format).
-pub(crate) fn parse_library_folders(
-    text: &str,
-) -> Result<Vec<LibraryEntry>, crate::DiscoveryError> {
+pub(crate) fn parse_library_folders(text: &str) -> Result<Vec<LibraryEntry>, crate::DiscoveryError> {
     let root = vdf::parse(text)?;
     let Some(VdfNode::Map(entries)) = root.get("libraryfolders") else {
-        return Err(crate::DiscoveryError::Vdf {
-            line: 1,
-            message: "missing `libraryfolders` block".to_string(),
-        });
+        return Err(crate::DiscoveryError::Vdf { line: 1, message: "missing `libraryfolders` block".to_string() });
     };
     let mut out = Vec::new();
     for (key, node) in entries {
@@ -239,21 +197,13 @@ pub(crate) fn parse_library_folders(
                 let Some(path) = node.get_str("path").filter(|p| !p.is_empty()) else {
                     continue;
                 };
-                let label = node
-                    .get_str("label")
-                    .filter(|l| !l.is_empty())
-                    .map(str::to_string);
+                let label = node.get_str("label").filter(|l| !l.is_empty()).map(str::to_string);
                 let listed_apps = node
                     .get("apps")
                     .and_then(VdfNode::as_map)
                     .map(|apps| apps.iter().filter_map(|(k, _)| k.parse().ok()).collect())
                     .unwrap_or_default();
-                out.push(LibraryEntry {
-                    path: PathBuf::from(path),
-                    label,
-                    listed_apps,
-                    root: PathBuf::new(),
-                });
+                out.push(LibraryEntry { path: PathBuf::from(path), label, listed_apps, root: PathBuf::new() });
             }
         }
     }
@@ -276,56 +226,35 @@ pub struct AppManifest {
 impl AppManifest {
     /// `<library>/steamapps/common/<installdir>`.
     pub fn install_path(&self) -> PathBuf {
-        self.library
-            .join("steamapps")
-            .join("common")
-            .join(&self.install_dir_name)
+        self.library.join("steamapps").join("common").join(&self.install_dir_name)
     }
 
     /// Parses the text of an ACF manifest.
     pub fn parse(text: &str, library: &Path, root: &Path) -> Result<Self, crate::DiscoveryError> {
         let doc = vdf::parse(text)?;
-        let missing = |what: &str| crate::DiscoveryError::Vdf {
-            line: 1,
-            message: format!("AppState is missing `{what}`"),
-        };
+        let missing =
+            |what: &str| crate::DiscoveryError::Vdf { line: 1, message: format!("AppState is missing `{what}`") };
         let state = doc.get("AppState").ok_or_else(|| missing("AppState"))?;
         let app_id = state
             .get_str("appid")
             .ok_or_else(|| missing("appid"))?
             .trim()
             .parse::<u32>()
-            .map_err(|e| crate::DiscoveryError::Vdf {
-                line: 1,
-                message: format!("invalid appid: {e}"),
-            })?;
-        let install_dir_name = state
-            .get_str("installdir")
-            .filter(|s| !s.is_empty())
-            .ok_or_else(|| missing("installdir"))?
-            .to_string();
+            .map_err(|e| crate::DiscoveryError::Vdf { line: 1, message: format!("invalid appid: {e}") })?;
+        let install_dir_name =
+            state.get_str("installdir").filter(|s| !s.is_empty()).ok_or_else(|| missing("installdir"))?.to_string();
         let name = state
             .get_str("name")
             .filter(|s| !s.is_empty())
             .map(str::to_string)
             .unwrap_or_else(|| install_dir_name.clone());
-        Ok(AppManifest {
-            app_id,
-            name,
-            install_dir_name,
-            library: library.to_path_buf(),
-            root: root.to_path_buf(),
-        })
+        Ok(AppManifest { app_id, name, install_dir_name, library: library.to_path_buf(), root: root.to_path_buf() })
     }
 }
 
 /// Reads every `appmanifest_*.acf` of a library (sorted by app id). `root` is the Steam
 /// installation that lists the library.
-pub(crate) fn read_manifests(
-    library: &Path,
-    root: &Path,
-    warnings: &mut Vec<String>,
-) -> Vec<AppManifest> {
+pub(crate) fn read_manifests(library: &Path, root: &Path, warnings: &mut Vec<String>) -> Vec<AppManifest> {
     let steamapps = library.join("steamapps");
     let rd = match fs::read_dir(&steamapps) {
         Ok(rd) => rd,
@@ -362,11 +291,7 @@ pub(crate) fn read_manifests(
 /// (no save-location scanning; used to map running processes to app ids).
 pub(crate) fn installed_apps(cfg: &DiscoveryConfig) -> Vec<(PathBuf, u32)> {
     let roots = match &cfg.steam_roots {
-        Some(r) => r
-            .iter()
-            .filter(|p| p.is_dir())
-            .map(|p| normalize_path(p))
-            .collect(),
+        Some(r) => r.iter().filter(|p| p.is_dir()).map(|p| normalize_path(p)).collect(),
         None => detect_steam_roots(cfg),
     };
     let mut ignored = Vec::new();
@@ -444,11 +369,6 @@ mod tests {
             Path::new("/")
         )
         .is_err());
-        assert!(AppManifest::parse(
-            "\"AppState\" { \"appid\" \"1\" }",
-            Path::new("/"),
-            Path::new("/")
-        )
-        .is_err());
+        assert!(AppManifest::parse("\"AppState\" { \"appid\" \"1\" }", Path::new("/"), Path::new("/")).is_err());
     }
 }

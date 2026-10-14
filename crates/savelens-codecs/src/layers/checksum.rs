@@ -187,11 +187,9 @@ pub fn strip(rule: &ChecksumRule, data: &[u8]) -> CodecResult<Vec<u8>> {
 /// Computes the digest over the stripped payload and inserts the field.
 pub fn sign(rule: &ChecksumRule, stripped: &[u8]) -> CodecResult<Vec<u8>> {
     let cs = rule.covered_skip_start;
-    let ce = stripped
-        .len()
-        .checked_sub(rule.covered_skip_end)
-        .filter(|ce| *ce >= cs)
-        .ok_or_else(|| CodecError::Checksum(format!("payload of {} bytes too short for rule {rule}", stripped.len())))?;
+    let ce = stripped.len().checked_sub(rule.covered_skip_end).filter(|ce| *ce >= cs).ok_or_else(|| {
+        CodecError::Checksum(format!("payload of {} bytes too short for rule {rule}", stripped.len()))
+    })?;
     let natural = digest(rule.algorithm, &stripped[cs..ce]);
     let field = encode_digest(rule.algorithm, rule.encoding, &natural);
     let pos = match rule.field {
@@ -299,13 +297,7 @@ impl ChecksumLayer {
     pub fn detect(data: &[u8]) -> Option<(ChecksumLayer, Vec<u8>)> {
         let rule = hunt(data)?;
         let inner = strip(&rule, data).ok()?;
-        Some((
-            ChecksumLayer {
-                rule,
-                identity: Identity::new(data, &inner),
-            },
-            inner,
-        ))
+        Some((ChecksumLayer { rule, identity: Identity::new(data, &inner) }, inner))
     }
 
     /// Builds a layer from a known rule (verifying it).
@@ -314,13 +306,7 @@ impl ChecksumLayer {
             return Err(CodecError::Checksum(format!("rule {rule} does not match the data")));
         }
         let inner = strip(&rule, data)?;
-        Ok((
-            ChecksumLayer {
-                rule,
-                identity: Identity::new(data, &inner),
-            },
-            inner,
-        ))
+        Ok((ChecksumLayer { rule, identity: Identity::new(data, &inner) }, inner))
     }
 }
 
@@ -361,10 +347,7 @@ mod tests {
         assert_eq!(digest(ChecksumAlgorithm::Fnv1a32, b"a"), 0xe40c_292cu32.to_be_bytes());
         assert_eq!(digest(ChecksumAlgorithm::Fnv1a64, b"a"), 0xaf63_dc4c_8601_ec8cu64.to_be_bytes());
         assert_eq!(hex::encode(digest(ChecksumAlgorithm::Md5, b"abc")), "900150983cd24fb0d6963f7d28e17f72");
-        assert_eq!(
-            hex::encode(digest(ChecksumAlgorithm::Sha1, b"abc")),
-            "a9993e364706816aba3e25717850c26c9cd0d89d"
-        );
+        assert_eq!(hex::encode(digest(ChecksumAlgorithm::Sha1, b"abc")), "a9993e364706816aba3e25717850c26c9cd0d89d");
         assert_eq!(
             hex::encode(digest(ChecksumAlgorithm::Sha256, b"abc")),
             "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"

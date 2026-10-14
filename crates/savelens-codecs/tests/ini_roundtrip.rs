@@ -87,7 +87,8 @@ fn value_edits_keep_layout() {
     s.set(&p("version"), Node::I32(4)).unwrap();
     let out = s.encode_verified(&pipeline, &ctx()).unwrap();
 
-    let expected = String::from_utf8(save()).unwrap()
+    let expected = String::from_utf8(save())
+        .unwrap()
         .replace("gold = 1250", "gold = 999999")
         .replace("hp=87.50", "hp=100.00")
         .replace("hardcore = False", "hardcore = True")

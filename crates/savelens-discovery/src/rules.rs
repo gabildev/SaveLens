@@ -86,10 +86,7 @@ impl RuleSet {
 
     /// Parses and validates a rule file. `origin` names the source in error messages.
     pub fn from_toml(text: &str, origin: &str) -> Result<Self, DiscoveryError> {
-        let rules_err = |message: String| DiscoveryError::Rules {
-            origin: origin.to_string(),
-            message,
-        };
+        let rules_err = |message: String| DiscoveryError::Rules { origin: origin.to_string(), message };
         let file: RuleFile = toml::from_str(text).map_err(|e| rules_err(e.to_string()))?;
         let mut ids = std::collections::BTreeSet::new();
         for rule in &file.games {
@@ -103,12 +100,10 @@ impl RuleSet {
                 return Err(rules_err(format!("rule `{}` has no paths", rule.id)));
             }
             for p in &rule.paths {
-                validate_template(&p.path, &[])
-                    .map_err(|m| rules_err(format!("rule `{}`: {m}", rule.id)))?;
+                validate_template(&p.path, &[]).map_err(|m| rules_err(format!("rule `{}`: {m}", rule.id)))?;
                 for pat in p.patterns.iter().flatten().chain(&rule.patterns) {
-                    glob::Pattern::new(pat).map_err(|e| {
-                        rules_err(format!("rule `{}`: invalid pattern `{pat}`: {e}", rule.id))
-                    })?;
+                    glob::Pattern::new(pat)
+                        .map_err(|e| rules_err(format!("rule `{}`: invalid pattern `{pat}`: {e}", rule.id)))?;
                 }
             }
         }
@@ -151,20 +146,13 @@ impl RuleSet {
     }
 
     /// Rules applying to a game.
-    pub fn matching<'a>(
-        &'a self,
-        app_id: Option<u32>,
-        name: &'a str,
-    ) -> impl Iterator<Item = &'a SaveRule> + 'a {
+    pub fn matching<'a>(&'a self, app_id: Option<u32>, name: &'a str) -> impl Iterator<Item = &'a SaveRule> + 'a {
         self.rules.iter().filter(move |r| r.matches(app_id, name))
     }
 }
 
 /// Resolves the paths of `rule` for one game into existing save locations.
-pub(crate) fn resolve_rule(
-    rule: &SaveRule,
-    ctx: &PathContext,
-) -> Result<Vec<SaveLocation>, DiscoveryError> {
+pub(crate) fn resolve_rule(rule: &SaveRule, ctx: &PathContext) -> Result<Vec<SaveLocation>, DiscoveryError> {
     let mut out: Vec<SaveLocation> = Vec::new();
     for p in &rule.paths {
         if !ctx.applies(p.os) {
@@ -175,13 +163,7 @@ pub(crate) fn resolve_rule(
             if out.iter().any(|l| l.root == dir) {
                 continue;
             }
-            out.push(make_location(
-                dir,
-                patterns.clone(),
-                LocationSource::Rule {
-                    rule: rule.id.clone(),
-                },
-            )?);
+            out.push(make_location(dir, patterns.clone(), LocationSource::Rule { rule: rule.id.clone() })?);
         }
     }
     Ok(out)
@@ -196,14 +178,10 @@ mod tests {
         let set = RuleSet::builtin().unwrap();
         assert!(set.rules().len() >= 21);
         for id in [
-            413150, 105600, 367520, 1245620, 374320, 1145360, 504230, 892970, 526870, 1623730,
-            1091500, 292030, 489830, 377160, 1086940, 294100, 427520, 548430, 264710, 646570,
-            739630,
+            413150, 105600, 367520, 1245620, 374320, 1145360, 504230, 892970, 526870, 1623730, 1091500, 292030, 489830,
+            377160, 1086940, 294100, 427520, 548430, 264710, 646570, 739630,
         ] {
-            assert!(
-                set.matching(Some(id), "").next().is_some(),
-                "no rule for {id}"
-            );
+            assert!(set.matching(Some(id), "").next().is_some(), "no rule for {id}");
         }
         let sdv = set.get("stardew-valley").unwrap();
         assert_eq!(sdv.paths[0].path, "<winAppData>/StardewValley/Saves");
@@ -212,18 +190,13 @@ mod tests {
 
     #[test]
     fn invalid_rules_are_rejected() {
-        let bad_placeholder =
-            "[[game]]\nid = \"x\"\nname = \"X\"\npaths = [{ path = \"<nope>/a\" }]\n";
-        assert!(matches!(
-            RuleSet::from_toml(bad_placeholder, "t"),
-            Err(DiscoveryError::Rules { .. })
-        ));
+        let bad_placeholder = "[[game]]\nid = \"x\"\nname = \"X\"\npaths = [{ path = \"<nope>/a\" }]\n";
+        assert!(matches!(RuleSet::from_toml(bad_placeholder, "t"), Err(DiscoveryError::Rules { .. })));
         let dup = "[[game]]\nid = \"x\"\nname = \"X\"\npaths = [{ path = \"<home>\" }]\n[[game]]\nid = \"x\"\nname = \"Y\"\npaths = [{ path = \"<home>\" }]\n";
         assert!(RuleSet::from_toml(dup, "t").is_err());
         let no_paths = "[[game]]\nid = \"x\"\nname = \"X\"\npaths = []\n";
         assert!(RuleSet::from_toml(no_paths, "t").is_err());
-        let bad_os =
-            "[[game]]\nid = \"x\"\nname = \"X\"\npaths = [{ path = \"<home>\", os = \"mac\" }]\n";
+        let bad_os = "[[game]]\nid = \"x\"\nname = \"X\"\npaths = [{ path = \"<home>\", os = \"mac\" }]\n";
         assert!(RuleSet::from_toml(bad_os, "t").is_err());
         let bad_pattern = "[[game]]\nid = \"x\"\nname = \"X\"\npatterns = [\"[\"]\npaths = [{ path = \"<home>\" }]\n";
         assert!(RuleSet::from_toml(bad_pattern, "t").is_err());

@@ -75,12 +75,7 @@ impl<'a> ByteReader<'a> {
     }
 
     fn truncated(&self, ctx: &str, needed: usize) -> CodecError {
-        CodecError::Truncated {
-            codec: self.codec,
-            context: ctx.to_string(),
-            offset: self.pos,
-            needed,
-        }
+        CodecError::Truncated { codec: self.codec, context: ctx.to_string(), offset: self.pos, needed }
     }
 
     /// Builds a malformed-data error at the current offset.

@@ -22,10 +22,7 @@ pub const MAX_DECOMPRESSED: usize = 1 << 30;
 const SEARCH_LIMIT: usize = 64 * 1024 * 1024;
 
 fn comp_err(algo: CompressionAlgorithm, reason: impl Into<String>) -> CodecError {
-    CodecError::Compression {
-        algorithm: algo.name().to_string(),
-        reason: reason.into(),
-    }
+    CodecError::Compression { algorithm: algo.name().to_string(), reason: reason.into() }
 }
 
 /// Inflates a zlib (`zlib_header = true`) or raw deflate stream; returns the
@@ -102,11 +99,28 @@ fn write_prefix(p: SizePrefix, v: usize) -> CodecResult<Vec<u8>> {
 /// Parameters needed to re-encode a stream.
 #[derive(Debug, Clone, PartialEq)]
 pub enum StreamParams {
-    Zlib { level: u32 },
-    Deflate { level: u32 },
-    Gzip { header: Vec<u8>, level: u32 },
-    Zstd { level: i32, checksum: bool, content_size: bool },
-    Lz4Frame { block_size: lz4_flex::frame::BlockSize, independent: bool, block_checksums: bool, content_checksum: bool, content_size: bool },
+    Zlib {
+        level: u32,
+    },
+    Deflate {
+        level: u32,
+    },
+    Gzip {
+        header: Vec<u8>,
+        level: u32,
+    },
+    Zstd {
+        level: i32,
+        checksum: bool,
+        content_size: bool,
+    },
+    Lz4Frame {
+        block_size: lz4_flex::frame::BlockSize,
+        independent: bool,
+        block_checksums: bool,
+        content_checksum: bool,
+        content_size: bool,
+    },
     Lz4Block,
 }
 
@@ -124,7 +138,9 @@ impl StreamParams {
 
     fn level(&self) -> Option<i32> {
         match self {
-            StreamParams::Zlib { level } | StreamParams::Deflate { level } | StreamParams::Gzip { level, .. } => Some(*level as i32),
+            StreamParams::Zlib { level } | StreamParams::Deflate { level } | StreamParams::Gzip { level, .. } => {
+                Some(*level as i32)
+            }
             StreamParams::Zstd { level, .. } => Some(*level),
             StreamParams::Lz4Frame { .. } | StreamParams::Lz4Block => None,
         }
@@ -142,27 +158,16 @@ impl StreamParams {
                 out.extend_from_slice(&(data.len() as u32).to_le_bytes());
                 Ok(out)
             }
-            StreamParams::Zstd {
-                level,
-                checksum,
-                content_size,
-            } => {
+            StreamParams::Zstd { level, checksum, content_size } => {
                 use zstd::stream::raw::CParameter;
                 let algo = CompressionAlgorithm::Zstd;
                 let mut c = zstd::bulk::Compressor::new(*level).map_err(|e| comp_err(algo, e.to_string()))?;
-                c.set_parameter(CParameter::ChecksumFlag(*checksum))
-                    .map_err(|e| comp_err(algo, e.to_string()))?;
+                c.set_parameter(CParameter::ChecksumFlag(*checksum)).map_err(|e| comp_err(algo, e.to_string()))?;
                 c.set_parameter(CParameter::ContentSizeFlag(*content_size))
                     .map_err(|e| comp_err(algo, e.to_string()))?;
                 c.compress(data).map_err(|e| comp_err(algo, e.to_string()))
             }
-            StreamParams::Lz4Frame {
-                block_size,
-                independent,
-                block_checksums,
-                content_checksum,
-                content_size,
-            } => {
+            StreamParams::Lz4Frame { block_size, independent, block_checksums, content_checksum, content_size } => {
                 use lz4_flex::frame::{BlockMode, FrameEncoder, FrameInfo};
                 let info = FrameInfo::new()
                     .block_size(*block_size)
@@ -171,10 +176,8 @@ impl StreamParams {
                     .content_checksum(*content_checksum)
                     .content_size(content_size.then_some(data.len() as u64));
                 let mut enc = FrameEncoder::with_frame_info(info, Vec::new());
-                enc.write_all(data)
-                    .map_err(|e| comp_err(CompressionAlgorithm::Lz4Frame, e.to_string()))?;
-                enc.finish()
-                    .map_err(|e| comp_err(CompressionAlgorithm::Lz4Frame, e.to_string()))
+                enc.write_all(data).map_err(|e| comp_err(CompressionAlgorithm::Lz4Frame, e.to_string()))?;
+                enc.finish().map_err(|e| comp_err(CompressionAlgorithm::Lz4Frame, e.to_string()))
             }
             StreamParams::Lz4Block => Ok(lz4_flex::block::compress(data)),
         }
@@ -193,7 +196,10 @@ fn gzip_header_len(data: &[u8]) -> CodecResult<usize> {
     }
     let mut pos = 10;
     if flg & 0x04 != 0 {
-        let xlen = u16::from_le_bytes([*data.get(pos).ok_or_else(|| comp_err(algo, "truncated FEXTRA"))?, *data.get(pos + 1).ok_or_else(|| comp_err(algo, "truncated FEXTRA"))?]) as usize;
+        let xlen = u16::from_le_bytes([
+            *data.get(pos).ok_or_else(|| comp_err(algo, "truncated FEXTRA"))?,
+            *data.get(pos + 1).ok_or_else(|| comp_err(algo, "truncated FEXTRA"))?,
+        ]) as usize;
         pos += 2 + xlen;
     }
     for flag in [0x08u8, 0x10] {
@@ -280,26 +286,22 @@ pub struct DecodedStream {
 }
 
 /// Decodes a stream of a given algorithm starting at `data[0]`.
-pub fn decode_stream(algo: CompressionAlgorithm, data: &[u8], expected_len: Option<usize>) -> CodecResult<DecodedStream> {
+pub fn decode_stream(
+    algo: CompressionAlgorithm,
+    data: &[u8],
+    expected_len: Option<usize>,
+) -> CodecResult<DecodedStream> {
     match algo {
         CompressionAlgorithm::Zlib => {
             if data.len() < 6 || data[0] & 0x0f != 8 || (u16::from(data[0]) << 8 | u16::from(data[1])) % 31 != 0 {
                 return Err(comp_err(algo, "invalid zlib header"));
             }
             let (output, consumed) = inflate(data, true)?;
-            Ok(DecodedStream {
-                params: StreamParams::Zlib { level: 6 },
-                output,
-                consumed,
-            })
+            Ok(DecodedStream { params: StreamParams::Zlib { level: 6 }, output, consumed })
         }
         CompressionAlgorithm::Deflate => {
             let (output, consumed) = inflate(data, false)?;
-            Ok(DecodedStream {
-                params: StreamParams::Deflate { level: 6 },
-                output,
-                consumed,
-            })
+            Ok(DecodedStream { params: StreamParams::Deflate { level: 6 }, output, consumed })
         }
         CompressionAlgorithm::Gzip => {
             let hlen = gzip_header_len(data)?;
@@ -312,10 +314,7 @@ pub fn decode_stream(algo: CompressionAlgorithm, data: &[u8], expected_len: Opti
                 return Err(comp_err(algo, "gzip trailer CRC/size mismatch"));
             }
             Ok(DecodedStream {
-                params: StreamParams::Gzip {
-                    header: data[..hlen].to_vec(),
-                    level: 6,
-                },
+                params: StreamParams::Gzip { header: data[..hlen].to_vec(), level: 6 },
                 output,
                 consumed: tpos + 8,
             })
@@ -326,7 +325,8 @@ pub fn decode_stream(algo: CompressionAlgorithm, data: &[u8], expected_len: Opti
             }
             let consumed = zstd::zstd_safe::find_frame_compressed_size(data)
                 .map_err(|code| comp_err(algo, zstd::zstd_safe::get_error_name(code)))?;
-            let mut dec = zstd::stream::read::Decoder::new(&data[..consumed]).map_err(|e| comp_err(algo, e.to_string()))?;
+            let mut dec =
+                zstd::stream::read::Decoder::new(&data[..consumed]).map_err(|e| comp_err(algo, e.to_string()))?;
             let mut output = Vec::new();
             (&mut dec)
                 .take(MAX_DECOMPRESSED as u64 + 1)
@@ -338,15 +338,7 @@ pub fn decode_stream(algo: CompressionAlgorithm, data: &[u8], expected_len: Opti
             let fhd = data[4];
             let checksum = fhd & 0x04 != 0;
             let content_size = (fhd >> 6) != 0 || fhd & 0x20 != 0;
-            Ok(DecodedStream {
-                params: StreamParams::Zstd {
-                    level: 3,
-                    checksum,
-                    content_size,
-                },
-                output,
-                consumed,
-            })
+            Ok(DecodedStream { params: StreamParams::Zstd { level: 3, checksum, content_size }, output, consumed })
         }
         CompressionAlgorithm::Lz4Frame => {
             let (len, params) = lz4_frame_len(data)?;
@@ -359,14 +351,11 @@ pub fn decode_stream(algo: CompressionAlgorithm, data: &[u8], expected_len: Opti
             if output.len() > MAX_DECOMPRESSED {
                 return Err(comp_err(algo, "decompressed size exceeds the 1 GiB safety limit"));
             }
-            Ok(DecodedStream {
-                params,
-                output,
-                consumed: len,
-            })
+            Ok(DecodedStream { params, output, consumed: len })
         }
         CompressionAlgorithm::Lz4Block => {
-            let size = expected_len.ok_or_else(|| comp_err(algo, "LZ4 block streams need an uncompressed-size prefix"))?;
+            let size =
+                expected_len.ok_or_else(|| comp_err(algo, "LZ4 block streams need an uncompressed-size prefix"))?;
             if size > MAX_DECOMPRESSED {
                 return Err(comp_err(algo, "declared size exceeds the 1 GiB safety limit"));
             }
@@ -374,11 +363,7 @@ pub fn decode_stream(algo: CompressionAlgorithm, data: &[u8], expected_len: Opti
             if output.len() != size {
                 return Err(comp_err(algo, "decompressed size differs from prefix"));
             }
-            Ok(DecodedStream {
-                params: StreamParams::Lz4Block,
-                output,
-                consumed: data.len(),
-            })
+            Ok(DecodedStream { params: StreamParams::Lz4Block, output, consumed: data.len() })
         }
     }
 }
@@ -405,10 +390,9 @@ fn search_exact(params: &StreamParams, payload: &[u8], original: &[u8]) -> Optio
             }
             levels.into_iter().map(|level| StreamParams::Zlib { level }).collect()
         }
-        StreamParams::Deflate { .. } => [6u32, 9, 1, 2, 3, 4, 5, 7, 8, 0]
-            .into_iter()
-            .map(|level| StreamParams::Deflate { level })
-            .collect(),
+        StreamParams::Deflate { .. } => {
+            [6u32, 9, 1, 2, 3, 4, 5, 7, 8, 0].into_iter().map(|level| StreamParams::Deflate { level }).collect()
+        }
         StreamParams::Gzip { header, .. } => {
             let xfl = header.get(8).copied().unwrap_or(0);
             let mut levels: Vec<u32> = match xfl {
@@ -421,35 +405,22 @@ fn search_exact(params: &StreamParams, payload: &[u8], original: &[u8]) -> Optio
                     levels.push(l);
                 }
             }
-            levels
-                .into_iter()
-                .map(|level| StreamParams::Gzip {
-                    header: header.clone(),
-                    level,
-                })
-                .collect()
+            levels.into_iter().map(|level| StreamParams::Gzip { header: header.clone(), level }).collect()
         }
-        StreamParams::Zstd {
-            checksum, content_size, ..
-        } => {
-            let mut levels: Vec<i32> = vec![3, 1, 2, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, -1, -3, -5];
+        StreamParams::Zstd { checksum, content_size, .. } => {
+            let mut levels: Vec<i32> =
+                vec![3, 1, 2, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, -1, -3, -5];
             if payload.len() > 4 * 1024 * 1024 {
                 levels.truncate(10);
             }
             levels
                 .into_iter()
-                .map(|level| StreamParams::Zstd {
-                    level,
-                    checksum: *checksum,
-                    content_size: *content_size,
-                })
+                .map(|level| StreamParams::Zstd { level, checksum: *checksum, content_size: *content_size })
                 .collect()
         }
         other => vec![other.clone()],
     };
-    candidates
-        .into_iter()
-        .find(|p| p.compress(payload).map(|c| c == original).unwrap_or(false))
+    candidates.into_iter().find(|p| p.compress(payload).map(|c| c == original).unwrap_or(false))
 }
 
 /// The compression layer.
@@ -462,20 +433,17 @@ pub struct CompressionLayer {
     identity: Identity,
 }
 
-const PREFIXES: [Option<SizePrefix>; 5] = [
-    None,
-    Some(SizePrefix::U32Le),
-    Some(SizePrefix::U64Le),
-    Some(SizePrefix::U32Be),
-    Some(SizePrefix::U64Be),
-];
+const PREFIXES: [Option<SizePrefix>; 5] =
+    [None, Some(SizePrefix::U32Le), Some(SizePrefix::U64Le), Some(SizePrefix::U32Be), Some(SizePrefix::U64Be)];
 
 fn magic_algorithm(data: &[u8]) -> Option<CompressionAlgorithm> {
     match data {
         [0x1f, 0x8b, 0x08, ..] => Some(CompressionAlgorithm::Gzip),
         [0x28, 0xb5, 0x2f, 0xfd, ..] => Some(CompressionAlgorithm::Zstd),
         [0x04, 0x22, 0x4d, 0x18, ..] => Some(CompressionAlgorithm::Lz4Frame),
-        [a, b, ..] if a & 0x0f == 8 && a >> 4 <= 7 && (u16::from(*a) << 8 | u16::from(*b)) % 31 == 0 && b & 0x20 == 0 => {
+        [a, b, ..]
+            if a & 0x0f == 8 && a >> 4 <= 7 && (u16::from(*a) << 8 | u16::from(*b)) % 31 == 0 && b & 0x20 == 0 =>
+        {
             Some(CompressionAlgorithm::Zlib)
         }
         _ => None,
@@ -527,14 +495,17 @@ impl CompressionLayer {
         None
     }
 
-    fn build(data: &[u8], prefix: Option<SizePrefix>, skip: usize, stream: DecodedStream) -> Option<(CompressionLayer, Vec<u8>)> {
+    fn build(
+        data: &[u8],
+        prefix: Option<SizePrefix>,
+        skip: usize,
+        stream: DecodedStream,
+    ) -> Option<(CompressionLayer, Vec<u8>)> {
         let end = skip + stream.consumed;
-        let framing = Framing {
-            prefix: Vec::new(),
-            suffix: data.get(end..)?.to_vec(),
-        };
+        let framing = Framing { prefix: Vec::new(), suffix: data.get(end..)?.to_vec() };
         // Raw deflate / lz4 block with trailing garbage is too likely a false positive.
-        if !framing.suffix.is_empty() && matches!(stream.params, StreamParams::Deflate { .. } | StreamParams::Lz4Block) {
+        if !framing.suffix.is_empty() && matches!(stream.params, StreamParams::Deflate { .. } | StreamParams::Lz4Block)
+        {
             return None;
         }
         let original_stream = &data[skip..end];
@@ -554,7 +525,11 @@ impl CompressionLayer {
 
     /// Builds a layer for a specific algorithm (no magic sniffing), used for
     /// raw deflate fallbacks and tests.
-    pub fn open_as(algo: CompressionAlgorithm, data: &[u8], prefix: Option<SizePrefix>) -> CodecResult<(CompressionLayer, Vec<u8>)> {
+    pub fn open_as(
+        algo: CompressionAlgorithm,
+        data: &[u8],
+        prefix: Option<SizePrefix>,
+    ) -> CodecResult<(CompressionLayer, Vec<u8>)> {
         let skip = prefix.map(SizePrefix::width).unwrap_or(0);
         let body = data.get(skip..).ok_or_else(|| comp_err(algo, "input shorter than size prefix"))?;
         let declared = match prefix {
@@ -577,10 +552,7 @@ impl CompressionLayer {
             CompressionLayer {
                 params,
                 size_prefix: prefix,
-                framing: Framing {
-                    prefix: Vec::new(),
-                    suffix: data[end..].to_vec(),
-                },
+                framing: Framing { prefix: Vec::new(), suffix: data[end..].to_vec() },
                 exact,
                 identity: Identity::new(data, &stream.output),
             },
@@ -639,7 +611,11 @@ mod tests {
         assert_eq!(layer.wrap(&inner).unwrap(), original, "identity re-wrap");
         if expect_exact {
             assert!(layer.exact, "{algo:?} should be exact");
-            assert_eq!(layer.params.compress(&inner).unwrap(), original[layer.size_prefix.map(|p| p.width()).unwrap_or(0)..original.len() - layer.framing.suffix.len()]);
+            assert_eq!(
+                layer.params.compress(&inner).unwrap(),
+                original
+                    [layer.size_prefix.map(|p| p.width()).unwrap_or(0)..original.len() - layer.framing.suffix.len()]
+            );
         }
         // Edit → recompress → decompress yields the edit.
         let mut edited = inner.clone();
@@ -668,11 +644,7 @@ mod tests {
 
     #[test]
     fn zstd_with_checksum() {
-        let p = StreamParams::Zstd {
-            level: 5,
-            checksum: true,
-            content_size: true,
-        };
+        let p = StreamParams::Zstd { level: 5, checksum: true, content_size: true };
         let c = p.compress(&sample()).unwrap();
         check(&c, CompressionAlgorithm::Zstd, true);
     }
@@ -736,12 +708,9 @@ mod tests {
         let n = c.len();
         c.truncate(n / 2);
         assert!(decode_stream(CompressionAlgorithm::Zlib, &c, None).is_err());
-        let mut g = StreamParams::Gzip {
-            header: vec![0x1f, 0x8b, 8, 0, 0, 0, 0, 0, 0, 3],
-            level: 6,
-        }
-        .compress(&sample())
-        .unwrap();
+        let mut g = StreamParams::Gzip { header: vec![0x1f, 0x8b, 8, 0, 0, 0, 0, 0, 0, 3], level: 6 }
+            .compress(&sample())
+            .unwrap();
         let l = g.len();
         g[l - 5] ^= 1; // corrupt CRC
         assert!(decode_stream(CompressionAlgorithm::Gzip, &g, None).is_err());

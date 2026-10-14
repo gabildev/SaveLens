@@ -24,11 +24,7 @@ pub struct DiffOptions {
 
 impl Default for DiffOptions {
     fn default() -> Self {
-        DiffOptions {
-            lcs_cell_budget: 1_000_000,
-            max_byte_ranges: 256,
-            byte_merge_gap: 3,
-        }
+        DiffOptions { lcs_cell_budget: 1_000_000, max_byte_ranges: 256, byte_merge_gap: 3 }
     }
 }
 
@@ -49,10 +45,20 @@ pub struct ByteRange {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "op", rename_all = "kebab-case")]
 pub enum ChangeKind {
-    Added { new: Node },
-    Removed { old: Node },
-    Modified { old: Node, new: Node },
-    TypeChanged { old: Node, new: Node },
+    Added {
+        new: Node,
+    },
+    Removed {
+        old: Node,
+    },
+    Modified {
+        old: Node,
+        new: Node,
+    },
+    TypeChanged {
+        old: Node,
+        new: Node,
+    },
     BytesChanged {
         old_len: u64,
         new_len: u64,
@@ -120,10 +126,7 @@ pub fn diff_with(old: &Node, new: &Node, opts: &DiffOptions) -> SemanticDiff {
 
 /// Diffs two trees whose Merkle trees were already computed (e.g. cached).
 pub fn diff_trees(old: &Node, ta: &MerkleTree, new: &Node, tb: &MerkleTree, opts: &DiffOptions) -> SemanticDiff {
-    let mut ctx = Ctx {
-        opts,
-        out: SemanticDiff::default(),
-    };
+    let mut ctx = Ctx { opts, out: SemanticDiff::default() };
     let mut path = NodePath::root();
     ctx.node(old, ta, new, tb, &mut path);
     ctx.out
@@ -141,10 +144,7 @@ impl Ctx<'_> {
             ChangeKind::Removed { .. } => self.out.stats.removed += 1,
             _ => self.out.stats.modified += 1,
         }
-        self.out.changes.push(Change {
-            path: path.clone(),
-            kind,
-        });
+        self.out.changes.push(Change { path: path.clone(), kind });
     }
 
     fn node(&mut self, a: &Node, ta: &MerkleTree, b: &Node, tb: &MerkleTree, path: &mut NodePath) {
@@ -174,20 +174,8 @@ impl Ctx<'_> {
             (Node::Array(xa), Node::Array(xb)) => self.array(xa, ta, xb, tb, path),
             (Node::Bytes(x), Node::Bytes(y)) => self.bytes(x, ta, y, tb, path),
             (Node::RawRegion(x), Node::RawRegion(y)) => self.bytes(&x.bytes, ta, &y.bytes, tb, path),
-            (a, b) if a.kind() == b.kind() => self.push(
-                path,
-                ChangeKind::Modified {
-                    old: a.clone(),
-                    new: b.clone(),
-                },
-            ),
-            (a, b) => self.push(
-                path,
-                ChangeKind::TypeChanged {
-                    old: a.clone(),
-                    new: b.clone(),
-                },
-            ),
+            (a, b) if a.kind() == b.kind() => self.push(path, ChangeKind::Modified { old: a.clone(), new: b.clone() }),
+            (a, b) => self.push(path, ChangeKind::TypeChanged { old: a.clone(), new: b.clone() }),
         }
     }
 
@@ -267,18 +255,10 @@ impl Ctx<'_> {
         }
         // Merge ranges that touch across block boundaries.
         let ranges = merge_adjacent(ranges, self.opts.byte_merge_gap);
-        let ranges = ranges
-            .into_iter()
-            .map(|(s, e)| make_range(a, b, s, e))
-            .collect();
+        let ranges = ranges.into_iter().map(|(s, e)| make_range(a, b, s, e)).collect();
         self.push(
             path,
-            ChangeKind::BytesChanged {
-                old_len: a.len() as u64,
-                new_len: b.len() as u64,
-                ranges,
-                truncated,
-            },
+            ChangeKind::BytesChanged { old_len: a.len() as u64, new_len: b.len() as u64, ranges, truncated },
         );
     }
 }
@@ -336,12 +316,7 @@ fn make_range(a: &[u8], b: &[u8], s: usize, e: usize) -> ByteRange {
     } else {
         None
     };
-    ByteRange {
-        offset: s as u64,
-        old: a[s..e].to_vec(),
-        new: b[s..e].to_vec(),
-        word_view,
-    }
+    ByteRange { offset: s as u64, old: a[s..e].to_vec(), new: b[s..e].to_vec(), word_view }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -482,19 +457,10 @@ impl Change {
                 }
                 _ => format!("{label}: {} -> {}", old.preview(60), new.preview(60)),
             },
-            ChangeKind::TypeChanged { old, new } => format!(
-                "{label}: {} ({}) -> {} ({})",
-                old.preview(40),
-                old.kind(),
-                new.preview(40),
-                new.kind()
-            ),
-            ChangeKind::BytesChanged {
-                old_len,
-                new_len,
-                ranges,
-                truncated,
-            } => {
+            ChangeKind::TypeChanged { old, new } => {
+                format!("{label}: {} ({}) -> {} ({})", old.preview(40), old.kind(), new.preview(40), new.kind())
+            }
+            ChangeKind::BytesChanged { old_len, new_len, ranges, truncated } => {
                 let mut s = format!("{label}: {} byte range(s) changed", ranges.len());
                 if *truncated {
                     s.push_str(" (truncated)");
@@ -527,7 +493,9 @@ impl Change {
             ChangeKind::Added { .. } => format!("+{label}"),
             ChangeKind::Removed { .. } => format!("-{label}"),
             ChangeKind::TypeChanged { new, .. } => format!("{label} → {}", new.preview(24)),
-            ChangeKind::BytesChanged { ranges, .. } => format!("{label} ~{} bytes", ranges.iter().map(|r| r.new.len()).sum::<usize>()),
+            ChangeKind::BytesChanged { ranges, .. } => {
+                format!("{label} ~{} bytes", ranges.iter().map(|r| r.new.len()).sum::<usize>())
+            }
         }
     }
 }
@@ -570,11 +538,7 @@ impl SemanticDiff {
             })
             .collect();
         ranked.sort_by_key(|(r, _)| *r);
-        let shown: Vec<String> = ranked
-            .iter()
-            .take(max_items.max(1))
-            .map(|(_, c)| c.short_effect(aliases))
-            .collect();
+        let shown: Vec<String> = ranked.iter().take(max_items.max(1)).map(|(_, c)| c.short_effect(aliases)).collect();
         let rest = self.changes.len().saturating_sub(shown.len());
         if rest > 0 {
             format!("{} (+{rest} more)", shown.join(", "))
@@ -601,10 +565,7 @@ mod tests {
                 Node::map_from([
                     ("Gold", Node::I32(gold)),
                     ("Level", Node::U8(3)),
-                    (
-                        "Inventory",
-                        Node::Array(items.iter().map(|s| Node::String(s.to_string())).collect()),
-                    ),
+                    ("Inventory", Node::Array(items.iter().map(|s| Node::String(s.to_string())).collect())),
                 ]),
             ),
             ("Quests", Node::map_from([("Main_02", Node::String(quest.into()))])),
@@ -625,10 +586,13 @@ mod tests {
         let b = save(1500, "Completed", &["Sword"]);
         let d = diff(&a, &b);
         let log = d.changelog(&NoAliases);
-        assert_eq!(log, vec![
-            "Player.Gold: 1200 -> 1500 (+300)".to_string(),
-            "Quests.Main_02: \"Active\" -> \"Completed\"".to_string(),
-        ]);
+        assert_eq!(
+            log,
+            vec![
+                "Player.Gold: 1200 -> 1500 (+300)".to_string(),
+                "Quests.Main_02: \"Active\" -> \"Completed\"".to_string(),
+            ]
+        );
         let alias = |p: &NodePath| (p.to_string() == "Player.Gold").then(|| "Oro".to_string());
         assert_eq!(d.summary(&alias, 5), "+300 Oro, Main_02 → \"Completed\"");
     }

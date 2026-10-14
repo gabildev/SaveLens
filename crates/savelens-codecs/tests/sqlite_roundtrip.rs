@@ -27,29 +27,20 @@ fn build_db(wal: bool) -> Vec<u8> {
     let path = dir.path().join("save.db");
     let conn = Connection::open(&path).unwrap();
     if wal {
-        let mode: String = conn
-            .query_row("PRAGMA journal_mode=WAL", [], |r| r.get(0))
-            .unwrap();
+        let mode: String = conn.query_row("PRAGMA journal_mode=WAL", [], |r| r.get(0)).unwrap();
         assert_eq!(mode, "wal");
     }
     conn.execute_batch(SCHEMA).unwrap();
     conn.close().unwrap();
     assert!(
         !dir.path().join("save.db-wal").exists()
-            || std::fs::metadata(dir.path().join("save.db-wal"))
-                .unwrap()
-                .len()
-                == 0
+            || std::fs::metadata(dir.path().join("save.db-wal")).unwrap().len() == 0
     );
     std::fs::read(&path).unwrap()
 }
 
 fn p(keys: &[&str]) -> NodePath {
-    NodePath::from_segments(
-        keys.iter()
-            .map(|k| PathSeg::Key((*k).to_string()))
-            .collect(),
-    )
+    NodePath::from_segments(keys.iter().map(|k| PathSeg::Key((*k).to_string())).collect())
 }
 
 fn ctx() -> DetectContext {
@@ -66,13 +57,8 @@ fn reopen(bytes: &[u8]) -> (tempfile::TempDir, Connection) {
 }
 
 fn schema_of(conn: &Connection) -> Vec<(String, String, Option<String>)> {
-    let mut st = conn
-        .prepare("SELECT type, name, sql FROM sqlite_master ORDER BY rowid")
-        .unwrap();
-    st.query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))
-        .unwrap()
-        .collect::<Result<_, _>>()
-        .unwrap()
+    let mut st = conn.prepare("SELECT type, name, sql FROM sqlite_master ORDER BY rowid").unwrap();
+    st.query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?))).unwrap().collect::<Result<_, _>>().unwrap()
 }
 
 fn open(bytes: &[u8]) -> OpenedSave {
@@ -93,53 +79,23 @@ fn detect_and_lossless_round_trip() {
         assert_eq!(s.encode().unwrap(), db);
         let notes = s.envelope().notes.join("\n");
         assert!(notes.contains("3 table(s), 8 row(s)"), "{notes}");
-        assert!(
-            notes.contains(if wal {
-                "journal mode wal"
-            } else {
-                "journal mode rollback"
-            }),
-            "{notes}"
-        );
+        assert!(notes.contains(if wal { "journal mode wal" } else { "journal mode rollback" }), "{notes}");
         assert!(notes.contains("page size 4096"), "{notes}");
 
         let root = s.root();
-        let Node::Map(tables) = &root else {
-            panic!("root not a map")
-        };
+        let Node::Map(tables) = &root else { panic!("root not a map") };
         let names: Vec<&String> = tables.keys().collect();
-        assert_eq!(
-            names,
-            vec!["player", "inventory", "flags"],
-            "views/indexes must not be projected"
-        );
-        assert_eq!(
-            root.get(&p(&["player", "1", "name"])),
-            Some(&Node::String("Hero".into()))
-        );
-        assert_eq!(
-            root.get(&p(&["player", "1", "gold"])),
-            Some(&Node::I64(1200))
-        );
+        assert_eq!(names, vec!["player", "inventory", "flags"], "views/indexes must not be projected");
+        assert_eq!(root.get(&p(&["player", "1", "name"])), Some(&Node::String("Hero".into())));
+        assert_eq!(root.get(&p(&["player", "1", "gold"])), Some(&Node::I64(1200)));
         assert_eq!(root.get(&p(&["player", "1", "hp"])), Some(&Node::F64(87.5)));
-        assert_eq!(
-            root.get(&p(&["player", "1", "avatar"])),
-            Some(&Node::Bytes(vec![0x89, b'P', b'N', b'G']))
-        );
+        assert_eq!(root.get(&p(&["player", "1", "avatar"])), Some(&Node::Bytes(vec![0x89, b'P', b'N', b'G'])));
         assert_eq!(root.get(&p(&["player", "1", "note"])), Some(&Node::Null));
-        assert_eq!(
-            root.get(&p(&["flags", "2", "name"])),
-            Some(&Node::String("boss_dead".into()))
-        );
-        let Some(Node::Map(inv)) = root.get(&p(&["inventory"])) else {
-            panic!()
-        };
+        assert_eq!(root.get(&p(&["flags", "2", "name"])), Some(&Node::String("boss_dead".into())));
+        let Some(Node::Map(inv)) = root.get(&p(&["inventory"])) else { panic!() };
         let keys: Vec<&String> = inv.keys().collect();
         // Ordered by primary key (owner, slot); `|` and `\` escaped.
-        assert_eq!(
-            keys,
-            vec!["Ghost|hand", "Hero|back\\\\pack", "Hero|belt\\|left"]
-        );
+        assert_eq!(keys, vec!["Ghost|hand", "Hero|back\\\\pack", "Hero|belt\\|left"]);
     }
 }
 
@@ -154,22 +110,10 @@ fn edit_insert_delete_and_verify_sql() {
         let pipeline = EnvelopePipeline::builtin();
         let mut s = open(&db);
         let mut root = s.root();
-        root.set(&p(&["player", "1", "gold"]), Node::I64(999_999), false)
-            .unwrap();
-        root.set(
-            &p(&["player", "1", "name"]),
-            Node::String("Hero \"the\" Brave".into()),
-            false,
-        )
-        .unwrap();
-        root.set(&p(&["player", "2", "hp"]), Node::F32(100.0), false)
-            .unwrap();
-        root.set(
-            &p(&["player", "2", "avatar"]),
-            Node::Bytes(vec![1, 2, 3, 4, 5]),
-            false,
-        )
-        .unwrap();
+        root.set(&p(&["player", "1", "gold"]), Node::I64(999_999), false).unwrap();
+        root.set(&p(&["player", "1", "name"]), Node::String("Hero \"the\" Brave".into()), false).unwrap();
+        root.set(&p(&["player", "2", "hp"]), Node::F32(100.0), false).unwrap();
+        root.set(&p(&["player", "2", "avatar"]), Node::Bytes(vec![1, 2, 3, 4, 5]), false).unwrap();
         root.remove(&p(&["player", "3"])).unwrap();
         root.set(
             &p(&["player", "10"]),
@@ -184,12 +128,7 @@ fn edit_insert_delete_and_verify_sql() {
             true,
         )
         .unwrap();
-        root.set(
-            &p(&["inventory", "Hero|belt\\|left", "qty"]),
-            Node::I64(99),
-            false,
-        )
-        .unwrap();
+        root.set(&p(&["inventory", "Hero|belt\\|left", "qty"]), Node::I64(99), false).unwrap();
         root.remove(&p(&["inventory", "Ghost|hand"])).unwrap();
         root.set(
             &p(&["inventory", "Recruit|a\\|b"]),
@@ -202,8 +141,7 @@ fn edit_insert_delete_and_verify_sql() {
             true,
         )
         .unwrap();
-        root.set(&p(&["flags", "2", "value"]), Node::Bool(true), false)
-            .unwrap();
+        root.set(&p(&["flags", "2", "value"]), Node::Bool(true), false).unwrap();
         s.apply_ast(&root).unwrap();
 
         let out = s.encode_verified(&pipeline, &ctx()).unwrap();
@@ -213,24 +151,16 @@ fn edit_insert_delete_and_verify_sql() {
         assert_eq!(&out[56..60], &db[56..60], "text encoding must be preserved");
 
         let (_d2, conn) = reopen(&out);
-        let check: String = conn
-            .query_row("PRAGMA integrity_check", [], |r| r.get(0))
-            .unwrap();
+        let check: String = conn.query_row("PRAGMA integrity_check", [], |r| r.get(0)).unwrap();
         assert_eq!(check, "ok");
         assert_eq!(schema_of(&conn), orig_schema, "schema must be identical");
 
-        let (name, gold): (String, i64) = conn
-            .query_row("SELECT name, gold FROM player WHERE id = 1", [], |r| {
-                Ok((r.get(0)?, r.get(1)?))
-            })
-            .unwrap();
+        let (name, gold): (String, i64) =
+            conn.query_row("SELECT name, gold FROM player WHERE id = 1", [], |r| Ok((r.get(0)?, r.get(1)?))).unwrap();
         assert_eq!(name, "Hero \"the\" Brave");
         assert_eq!(gold, 999_999);
-        let (hp, avatar): (f64, Vec<u8>) = conn
-            .query_row("SELECT hp, avatar FROM player WHERE id = 2", [], |r| {
-                Ok((r.get(0)?, r.get(1)?))
-            })
-            .unwrap();
+        let (hp, avatar): (f64, Vec<u8>) =
+            conn.query_row("SELECT hp, avatar FROM player WHERE id = 2", [], |r| Ok((r.get(0)?, r.get(1)?))).unwrap();
         assert_eq!(hp, 100.0);
         assert_eq!(avatar, vec![1, 2, 3, 4, 5]);
         let ids: Vec<i64> = conn
@@ -242,47 +172,23 @@ fn edit_insert_delete_and_verify_sql() {
             .unwrap();
         assert_eq!(ids, vec![1, 2, 10]);
         let (rname, rgold, rnote): (String, i64, String) = conn
-            .query_row(
-                "SELECT name, gold, note FROM player WHERE id = 10",
-                [],
-                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
-            )
+            .query_row("SELECT name, gold, note FROM player WHERE id = 10", [], |r| {
+                Ok((r.get(0)?, r.get(1)?, r.get(2)?))
+            })
             .unwrap();
-        assert_eq!(
-            (rname.as_str(), rgold, rnote.as_str()),
-            ("Recruit", 5, "joined")
-        );
+        assert_eq!((rname.as_str(), rgold, rnote.as_str()), ("Recruit", 5, "joined"));
         let qty: i64 = conn
-            .query_row(
-                "SELECT qty FROM inventory WHERE owner = 'Hero' AND slot = 'belt|left'",
-                [],
-                |r| r.get(0),
-            )
+            .query_row("SELECT qty FROM inventory WHERE owner = 'Hero' AND slot = 'belt|left'", [], |r| r.get(0))
             .unwrap();
         assert_eq!(qty, 99);
-        let ghost: i64 = conn
-            .query_row(
-                "SELECT count(*) FROM inventory WHERE owner = 'Ghost'",
-                [],
-                |r| r.get(0),
-            )
-            .unwrap();
+        let ghost: i64 =
+            conn.query_row("SELECT count(*) FROM inventory WHERE owner = 'Ghost'", [], |r| r.get(0)).unwrap();
         assert_eq!(ghost, 0);
         let stick: String = conn
-            .query_row(
-                "SELECT item FROM inventory WHERE owner = 'Recruit' AND slot = 'a|b'",
-                [],
-                |r| r.get(0),
-            )
+            .query_row("SELECT item FROM inventory WHERE owner = 'Recruit' AND slot = 'a|b'", [], |r| r.get(0))
             .unwrap();
         assert_eq!(stick, "Stick");
-        let flag: i64 = conn
-            .query_row(
-                "SELECT value FROM flags WHERE name = 'boss_dead'",
-                [],
-                |r| r.get(0),
-            )
-            .unwrap();
+        let flag: i64 = conn.query_row("SELECT value FROM flags WHERE name = 'boss_dead'", [], |r| r.get(0)).unwrap();
         assert_eq!(flag, 1);
         // The index still serves queries and agrees with the table.
         let rich: Vec<String> = conn
@@ -308,13 +214,9 @@ fn set_single_value_through_pipeline() {
     let db = build_db(false);
     let mut s = open(&db);
     s.set(&p(&["player", "2", "gold"]), Node::I64(77)).unwrap();
-    let out = s
-        .encode_verified(&EnvelopePipeline::builtin(), &ctx())
-        .unwrap();
+    let out = s.encode_verified(&EnvelopePipeline::builtin(), &ctx()).unwrap();
     let (_d, conn) = reopen(&out);
-    let gold: i64 = conn
-        .query_row("SELECT gold FROM player WHERE id = 2", [], |r| r.get(0))
-        .unwrap();
+    let gold: i64 = conn.query_row("SELECT gold FROM player WHERE id = 2", [], |r| r.get(0)).unwrap();
     assert_eq!(gold, 77);
 }
 
@@ -337,19 +239,13 @@ fn schema_changes_are_rejected() {
         (
             "add column",
             Box::new(|r| {
-                r.set(&p(&["player", "1", "level"]), Node::I64(3), true)
-                    .unwrap();
+                r.set(&p(&["player", "1", "level"]), Node::I64(3), true).unwrap();
             }),
         ),
         (
             "add column on insert",
             Box::new(|r| {
-                r.set(
-                    &p(&["player", "50"]),
-                    Node::map_from([("level", Node::I64(3))]),
-                    true,
-                )
-                .unwrap();
+                r.set(&p(&["player", "50"]), Node::map_from([("level", Node::I64(3))]), true).unwrap();
             }),
         ),
         (
@@ -373,19 +269,13 @@ fn schema_changes_are_rejected() {
         (
             "change rowid pk",
             Box::new(|r| {
-                r.set(&p(&["player", "1", "id"]), Node::I64(42), false)
-                    .unwrap();
+                r.set(&p(&["player", "1", "id"]), Node::I64(42), false).unwrap();
             }),
         ),
         (
             "change composite pk",
             Box::new(|r| {
-                r.set(
-                    &p(&["inventory", "Ghost|hand", "slot"]),
-                    Node::String("foot".into()),
-                    false,
-                )
-                .unwrap();
+                r.set(&p(&["inventory", "Ghost|hand", "slot"]), Node::String("foot".into()), false).unwrap();
             }),
         ),
         (
@@ -393,10 +283,7 @@ fn schema_changes_are_rejected() {
             Box::new(|r| {
                 r.set(
                     &p(&["inventory", "wrong"]),
-                    Node::map_from([
-                        ("owner", Node::String("A".into())),
-                        ("slot", Node::String("B".into())),
-                    ]),
+                    Node::map_from([("owner", Node::String("A".into())), ("slot", Node::String("B".into()))]),
                     true,
                 )
                 .unwrap();
@@ -409,11 +296,7 @@ fn schema_changes_are_rejected() {
         let mut work = s.clone();
         let err = work.apply_ast(&root);
         assert!(err.is_err(), "{what} must be rejected");
-        assert_eq!(
-            work.encode().unwrap(),
-            db,
-            "{what}: failed edit must not change the save"
-        );
+        assert_eq!(work.encode().unwrap(), db, "{what}: failed edit must not change the save");
     }
 }
 
@@ -423,9 +306,7 @@ fn temporary_copies_are_removed() {
     let db = build_db(true);
     let mut s = open(&db);
     s.set(&p(&["player", "1", "gold"]), Node::I64(1)).unwrap();
-    let _ = s
-        .encode_verified(&EnvelopePipeline::builtin(), &ctx())
-        .unwrap();
+    let _ = s.encode_verified(&EnvelopePipeline::builtin(), &ctx()).unwrap();
     let mut root = s.root();
     root.set(&p(&["nope"]), Node::map(), true).unwrap();
     assert!(s.apply_ast(&root).is_err());
@@ -443,23 +324,10 @@ fn corrupt_input_does_not_panic() {
     let db = build_db(false);
     let pipeline = EnvelopePipeline::builtin();
     let page = 4096;
-    let cuts = [
-        0,
-        16,
-        99,
-        100,
-        101,
-        page,
-        page + 1,
-        db.len() - page,
-        db.len() - 1,
-    ];
+    let cuts = [0, 16, 99, 100, 101, page, page + 1, db.len() - page, db.len() - 1];
     for cut in cuts {
         let data = &db[..cut];
-        assert!(
-            SqliteCodec.decode(data, &ctx()).is_err(),
-            "cut at {cut} must not decode"
-        );
+        assert!(SqliteCodec.decode(data, &ctx()).is_err(), "cut at {cut} must not decode");
         let s = pipeline.open(data, &ctx()).unwrap();
         assert_ne!(s.codec_id(), "sqlite", "cut at {cut}");
     }

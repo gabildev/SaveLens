@@ -127,7 +127,8 @@ impl KeyProfile {
     pub fn key_bytes(&self) -> CodecResult<Vec<u8>> {
         if let Some(h) = &self.key_hex {
             let cleaned: String = h.chars().filter(|c| !c.is_whitespace()).collect();
-            return hex::decode(cleaned).map_err(|e| CodecError::KeyDatabase(format!("profile `{}`: invalid key_hex: {e}", self.name)));
+            return hex::decode(cleaned)
+                .map_err(|e| CodecError::KeyDatabase(format!("profile `{}`: invalid key_hex: {e}", self.name)));
         }
         if let Some(t) = &self.key_text {
             return Ok(t.as_bytes().to_vec());
@@ -147,13 +148,15 @@ impl KeyProfile {
     pub fn fixed_iv(&self) -> CodecResult<[u8; 16]> {
         match self.iv {
             IvSource::Zero => Ok([0; 16]),
-            IvSource::Prefix => Err(CodecError::KeyDatabase(format!("profile `{}` takes its IV from the data", self.name))),
+            IvSource::Prefix => {
+                Err(CodecError::KeyDatabase(format!("profile `{}` takes its IV from the data", self.name)))
+            }
             IvSource::Fixed => {
-                let h = self
-                    .iv_hex
-                    .as_ref()
-                    .ok_or_else(|| CodecError::KeyDatabase(format!("profile `{}`: iv = \"fixed\" needs iv_hex", self.name)))?;
-                let v = hex::decode(h).map_err(|e| CodecError::KeyDatabase(format!("profile `{}`: invalid iv_hex: {e}", self.name)))?;
+                let h = self.iv_hex.as_ref().ok_or_else(|| {
+                    CodecError::KeyDatabase(format!("profile `{}`: iv = \"fixed\" needs iv_hex", self.name))
+                })?;
+                let v = hex::decode(h)
+                    .map_err(|e| CodecError::KeyDatabase(format!("profile `{}`: invalid iv_hex: {e}", self.name)))?;
                 v.try_into()
                     .map_err(|_| CodecError::KeyDatabase(format!("profile `{}`: iv_hex must be 16 bytes", self.name)))
             }
@@ -172,7 +175,9 @@ impl KeyProfile {
                 }
             }
             s => {
-                let (_, len) = s.aes().ok_or_else(|| CodecError::KeyDatabase(format!("profile `{}`: unknown scheme", self.name)))?;
+                let (_, len) = s
+                    .aes()
+                    .ok_or_else(|| CodecError::KeyDatabase(format!("profile `{}`: unknown scheme", self.name)))?;
                 let key = self.key_bytes()?;
                 if key.len() != len {
                     return Err(CodecError::KeyDatabase(format!(
@@ -188,7 +193,8 @@ impl KeyProfile {
             }
         }
         for p in &self.file_patterns {
-            glob::Pattern::new(p).map_err(|e| CodecError::KeyDatabase(format!("profile `{}`: bad pattern `{p}`: {e}", self.name)))?;
+            glob::Pattern::new(p)
+                .map_err(|e| CodecError::KeyDatabase(format!("profile `{}`: bad pattern `{p}`: {e}", self.name)))?;
         }
         Ok(())
     }
@@ -223,10 +229,7 @@ impl KeyDatabase {
         for p in &file.profile {
             p.validate()?;
         }
-        Ok(KeyDatabase {
-            profiles: file.profile,
-            sources: vec![source.to_string()],
-        })
+        Ok(KeyDatabase { profiles: file.profile, sources: vec![source.to_string()] })
     }
 
     /// Built-in profiles only.
@@ -331,10 +334,7 @@ mod tests {
     #[test]
     fn candidate_order() {
         let db = KeyDatabase::builtin();
-        let ctx = DetectContext {
-            file_name: Some("SaveFile.txt".into()),
-            app_id: Some(739630),
-        };
+        let ctx = DetectContext { file_name: Some("SaveFile.txt".into()), app_id: Some(739630) };
         let c = db.candidates(&ctx);
         assert_eq!(c[0].name, "phasmophobia");
         let ctx = DetectContext::for_file("slot1.es3");

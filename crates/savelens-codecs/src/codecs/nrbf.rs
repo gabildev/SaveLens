@@ -33,7 +33,9 @@ use std::collections::{HashMap, HashSet};
 
 use savelens_core::{Node, NodeMap, NodePath};
 
-use crate::document::{apply_via_diff, coerce_like, Capabilities, Confidence, DetectContext, Document, PathEditable, StructuralCodec};
+use crate::document::{
+    apply_via_diff, coerce_like, Capabilities, Confidence, DetectContext, Document, PathEditable, StructuralCodec,
+};
 use crate::error::{CodecError, CodecResult};
 use crate::io::{ByteReader, WriteExt};
 
@@ -100,10 +102,7 @@ impl Lps {
         if text.len() > i32::MAX as usize {
             return Err("string is longer than Int32.MaxValue bytes".into());
         }
-        Ok(Lps {
-            prefix: encode_varint(text.len()),
-            text: text.to_string(),
-        })
+        Ok(Lps { prefix: encode_varint(text.len()), text: text.to_string() })
     }
 
     /// Replaces the text; the length prefix is re-encoded minimally only when
@@ -553,12 +552,7 @@ impl<'a> Parser<'a> {
         for _ in 0..count {
             member_names.push(Lps::read(&mut self.r)?);
         }
-        Ok(ClassInfo {
-            object_id,
-            name,
-            member_count,
-            member_names,
-        })
+        Ok(ClassInfo { object_id, name, member_count, member_names })
     }
 
     fn read_member_types(&mut self, count: usize) -> CodecResult<Vec<BinType>> {
@@ -665,12 +659,7 @@ impl<'a> Parser<'a> {
                 })?;
                 self.register_id(object_id, idx, at)?;
                 let values = self.read_members(meta.types.as_deref(), meta.count)?;
-                Record::ClassWithId {
-                    object_id,
-                    metadata_id,
-                    meta: meta.rec,
-                    values,
-                }
+                Record::ClassWithId { object_id, metadata_id, meta: meta.rec, values }
             }
             2..=5 => {
                 let info = self.read_class_info()?;
@@ -678,22 +667,9 @@ impl<'a> Parser<'a> {
                 let types = if matches!(rtype, 4 | 5) { Some(self.read_member_types(count)?) } else { None };
                 let library_id = if matches!(rtype, 3 | 5) { Some(self.r.i32_le("library id")?) } else { None };
                 self.register_id(info.object_id, idx, at)?;
-                self.metas.insert(
-                    info.object_id,
-                    Meta {
-                        rec: idx,
-                        types: types.clone(),
-                        count,
-                    },
-                );
+                self.metas.insert(info.object_id, Meta { rec: idx, types: types.clone(), count });
                 let values = self.read_members(types.as_deref(), count)?;
-                Record::Class {
-                    rtype,
-                    info,
-                    types,
-                    library_id,
-                    values,
-                }
+                Record::Class { rtype, info, types, library_id, values }
             }
             6 => {
                 let object_id = self.r.i32_le("BinaryObjectString object id")?;
@@ -745,15 +721,7 @@ impl<'a> Parser<'a> {
                     }
                     _ => self.read_elements(total)?,
                 };
-                Record::BinaryArray {
-                    object_id,
-                    array_type,
-                    rank,
-                    lengths,
-                    lower_bounds,
-                    elem,
-                    values,
-                }
+                Record::BinaryArray { object_id, array_type, rank, lengths, lower_bounds, elem, values }
             }
             8 => {
                 let code = self.r.u8("MemberPrimitiveTyped type")?;
@@ -795,24 +763,14 @@ impl<'a> Parser<'a> {
                 for _ in 0..length {
                     values.push(Prim::read(&mut self.r, prim)?);
                 }
-                Record::ArraySinglePrimitive {
-                    object_id,
-                    length,
-                    prim,
-                    values,
-                }
+                Record::ArraySinglePrimitive { object_id, length, prim, values }
             }
             16 | 17 => {
                 let object_id = self.r.i32_le("ArraySingle object id")?;
                 let length = self.read_length("ArraySingle length")?;
                 self.register_id(object_id, idx, at)?;
                 let values = self.read_elements(length as usize)?;
-                Record::ArraySingle {
-                    rtype,
-                    object_id,
-                    length,
-                    values,
-                }
+                Record::ArraySingle { rtype, object_id, length, values }
             }
             21 | 22 => {
                 return Err(CodecError::unsupported(
@@ -871,10 +829,7 @@ fn unique_key(map: &NodeMap, name: &str) -> String {
     if !map.contains_key(name) {
         return name.to_string();
     }
-    (2..)
-        .map(|n| format!("{name}#{n}"))
-        .find(|k| !map.contains_key(k))
-        .unwrap_or_else(|| name.to_string())
+    (2..).map(|n| format!("{name}#{n}")).find(|k| !map.contains_key(k)).unwrap_or_else(|| name.to_string())
 }
 
 impl Projector<'_> {
@@ -955,7 +910,9 @@ impl Projector<'_> {
                 }
                 Node::Array(out)
             }
-            Record::BinaryArray { values, .. } | Record::ArraySingle { values, .. } => self.elements(idx, values, path, depth),
+            Record::BinaryArray { values, .. } | Record::ArraySingle { values, .. } => {
+                self.elements(idx, values, path, depth)
+            }
             _ => Node::Null,
         }
     }
@@ -997,12 +954,7 @@ impl NrbfDocument {
         if major != 1 || minor != 0 {
             return Err(CodecError::malformed(CODEC, 9, format!("unsupported NRBF version {major}.{minor}")));
         }
-        p.records.push(Record::Header {
-            root_id,
-            header_id,
-            major,
-            minor,
-        });
+        p.records.push(Record::Header { root_id, header_id, major, minor });
         let mut top = vec![0usize];
         loop {
             let idx = p.read_record(Ctx::TopLevel)?;
@@ -1020,21 +972,11 @@ impl NrbfDocument {
             return Err(CodecError::malformed(CODEC, 1, format!("root object id {root_id} is not defined")));
         }
         let trailing = p.r.rest().to_vec();
-        Ok(NrbfDocument {
-            records: p.records,
-            top,
-            ids: p.ids,
-            root_id,
-            trailing,
-        })
+        Ok(NrbfDocument { records: p.records, top, ids: p.ids, root_id, trailing })
     }
 
     fn project(&self) -> (Node, HashMap<NodePath, Loc>) {
-        let mut pr = Projector {
-            doc: self,
-            visited: HashSet::new(),
-            binds: HashMap::new(),
-        };
+        let mut pr = Projector { doc: self, visited: HashSet::new(), binds: HashMap::new() };
         let node = match self.ids.get(&self.root_id) {
             Some(&idx) => pr.record(idx, &NodePath::root(), 0),
             None => Node::Null,
@@ -1069,35 +1011,19 @@ impl NrbfDocument {
     fn write_record(&self, idx: usize, out: &mut Vec<u8>) {
         let Some(rec) = self.records.get(idx) else { return };
         match rec {
-            Record::Header {
-                root_id,
-                header_id,
-                major,
-                minor,
-            } => {
+            Record::Header { root_id, header_id, major, minor } => {
                 out.put_u8(0);
                 for v in [root_id, header_id, major, minor] {
                     out.put_i32_le(*v);
                 }
             }
-            Record::ClassWithId {
-                object_id,
-                metadata_id,
-                values,
-                ..
-            } => {
+            Record::ClassWithId { object_id, metadata_id, values, .. } => {
                 out.put_u8(1);
                 out.put_i32_le(*object_id);
                 out.put_i32_le(*metadata_id);
                 self.write_values(values, out);
             }
-            Record::Class {
-                rtype,
-                info,
-                types,
-                library_id,
-                values,
-            } => {
+            Record::Class { rtype, info, types, library_id, values } => {
                 out.put_u8(*rtype);
                 out.put_i32_le(info.object_id);
                 info.name.write(out);
@@ -1123,15 +1049,7 @@ impl NrbfDocument {
                 out.put_i32_le(*object_id);
                 value.write(out);
             }
-            Record::BinaryArray {
-                object_id,
-                array_type,
-                rank,
-                lengths,
-                lower_bounds,
-                elem,
-                values,
-            } => {
+            Record::BinaryArray { object_id, array_type, rank, lengths, lower_bounds, elem, values } => {
                 out.put_u8(7);
                 out.put_i32_le(*object_id);
                 out.put_u8(*array_type);
@@ -1172,12 +1090,7 @@ impl NrbfDocument {
                 out.put_u8(14);
                 out.put_i32_le(*n);
             }
-            Record::ArraySinglePrimitive {
-                object_id,
-                length,
-                prim,
-                values,
-            } => {
+            Record::ArraySinglePrimitive { object_id, length, prim, values } => {
                 out.put_u8(15);
                 out.put_i32_le(*object_id);
                 out.put_i32_le(*length);
@@ -1186,12 +1099,7 @@ impl NrbfDocument {
                     p.write(out);
                 }
             }
-            Record::ArraySingle {
-                rtype,
-                object_id,
-                length,
-                values,
-            } => {
+            Record::ArraySingle { rtype, object_id, length, values } => {
                 out.put_u8(*rtype);
                 out.put_i32_le(*object_id);
                 out.put_i32_le(*length);
@@ -1224,10 +1132,12 @@ impl NrbfDocument {
             },
             Loc::Elem { rec, index } => match self.records.get_mut(rec)? {
                 Record::ArraySinglePrimitive { values, .. } => values.get_mut(index).map(Slot::Prim),
-                Record::BinaryArray { values, .. } | Record::ArraySingle { values, .. } => match values.get_mut(index)? {
-                    Value::Prim(p) => Some(Slot::Prim(p)),
-                    Value::Rec { .. } => None,
-                },
+                Record::BinaryArray { values, .. } | Record::ArraySingle { values, .. } => {
+                    match values.get_mut(index)? {
+                        Value::Prim(p) => Some(Slot::Prim(p)),
+                        Value::Rec { .. } => None,
+                    }
+                }
                 _ => None,
             },
             Loc::Str { rec } => match self.records.get_mut(rec)? {
@@ -1267,7 +1177,9 @@ impl PathEditable for Editor<'_> {
         let Some(&loc) = self.binds.get(path) else {
             let reason = match existing {
                 Node::String(s) if s.starts_with("$ref:") => "object references are read-only".to_string(),
-                _ if path.last().and_then(|s| s.as_key()) == Some("$type") => "the class name ($type) is read-only".to_string(),
+                _ if path.last().and_then(|s| s.as_key()) == Some("$type") => {
+                    "the class name ($type) is read-only".to_string()
+                }
                 Node::Null => "null values cannot be replaced (no record holds a value)".to_string(),
                 n if n.is_container() => "classes and arrays cannot be reshaped".to_string(),
                 _ => "this value is read-only".to_string(),
@@ -1289,10 +1201,7 @@ impl PathEditable for Editor<'_> {
                 self.strings_set.insert(rec, s.clone());
             }
         }
-        let slot = self
-            .doc
-            .slot_mut(loc)
-            .ok_or_else(|| CodecError::path_not_found(CODEC, path))?;
+        let slot = self.doc.slot_mut(loc).ok_or_else(|| CodecError::path_not_found(CODEC, path))?;
         let res = match slot {
             Slot::Prim(p) => p.assign(&v),
             Slot::Str(l) => match &v {
@@ -1315,12 +1224,7 @@ impl Document for NrbfDocument {
 
     fn apply_ast(&mut self, root: &Node) -> CodecResult<()> {
         let (current, binds) = self.project();
-        let mut ed = Editor {
-            doc: self.clone(),
-            binds,
-            current: &current,
-            strings_set: HashMap::new(),
-        };
+        let mut ed = Editor { doc: self.clone(), binds, current: &current, strings_set: HashMap::new() };
         apply_via_diff(&mut ed, &current, root)?;
         *self = ed.doc;
         Ok(())

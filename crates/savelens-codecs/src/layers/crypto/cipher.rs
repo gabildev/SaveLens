@@ -31,10 +31,7 @@ pub enum AesMode {
 }
 
 fn crypto_err(scheme: &str, reason: impl Into<String>) -> CodecError {
-    CodecError::Crypto {
-        scheme: scheme.to_string(),
-        reason: reason.into(),
-    }
+    CodecError::Crypto { scheme: scheme.to_string(), reason: reason.into() }
 }
 
 macro_rules! with_aes {
@@ -75,7 +72,8 @@ pub fn aes_decrypt(mode: AesMode, key: &[u8], iv: &[u8; 16], padding: Padding, d
     with_aes!(key, scheme, |C| {
         match mode {
             AesMode::Cbc => {
-                let dec = cbc::Decryptor::<C>::new_from_slices(key, iv).map_err(|e| crypto_err(scheme, e.to_string()))?;
+                let dec =
+                    cbc::Decryptor::<C>::new_from_slices(key, iv).map_err(|e| crypto_err(scheme, e.to_string()))?;
                 match padding {
                     Padding::Pkcs7 => dec
                         .decrypt_padded_vec_mut::<Pkcs7>(data)
@@ -97,7 +95,8 @@ pub fn aes_decrypt(mode: AesMode, key: &[u8], iv: &[u8; 16], padding: Padding, d
                 }
             }
             AesMode::Ctr => {
-                let mut c = ctr::Ctr128BE::<C>::new_from_slices(key, iv).map_err(|e| crypto_err(scheme, e.to_string()))?;
+                let mut c =
+                    ctr::Ctr128BE::<C>::new_from_slices(key, iv).map_err(|e| crypto_err(scheme, e.to_string()))?;
                 let mut buf = data.to_vec();
                 c.apply_keystream(&mut buf);
                 Ok(buf)
@@ -125,7 +124,8 @@ pub fn aes_encrypt(mode: AesMode, key: &[u8], iv: &[u8; 16], padding: Padding, d
     with_aes!(key, scheme, |C| {
         match mode {
             AesMode::Cbc => {
-                let enc = cbc::Encryptor::<C>::new_from_slices(key, iv).map_err(|e| crypto_err(scheme, e.to_string()))?;
+                let enc =
+                    cbc::Encryptor::<C>::new_from_slices(key, iv).map_err(|e| crypto_err(scheme, e.to_string()))?;
                 Ok(match padding {
                     Padding::Pkcs7 => enc.encrypt_padded_vec_mut::<Pkcs7>(&plain),
                     Padding::None | Padding::Zero => enc.encrypt_padded_vec_mut::<NoPadding>(&plain),
@@ -139,7 +139,8 @@ pub fn aes_encrypt(mode: AesMode, key: &[u8], iv: &[u8; 16], padding: Padding, d
                 })
             }
             AesMode::Ctr => {
-                let mut c = ctr::Ctr128BE::<C>::new_from_slices(key, iv).map_err(|e| crypto_err(scheme, e.to_string()))?;
+                let mut c =
+                    ctr::Ctr128BE::<C>::new_from_slices(key, iv).map_err(|e| crypto_err(scheme, e.to_string()))?;
                 let mut buf = plain;
                 c.apply_keystream(&mut buf);
                 Ok(buf)

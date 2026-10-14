@@ -18,7 +18,9 @@ use std::collections::HashSet;
 use savelens_core::{Node, NodeMap, NodePath, PathSeg};
 
 use super::ini::{classify_scalar, dedup_keys, normalize_scalar, render_scalar, semantic_eq};
-use crate::document::{apply_via_diff, Capabilities, Confidence, DetectContext, Document, PathEditable, StructuralCodec};
+use crate::document::{
+    apply_via_diff, Capabilities, Confidence, DetectContext, Document, PathEditable, StructuralCodec,
+};
 use crate::error::{CodecError, CodecResult};
 
 const CODEC: &str = "xml";
@@ -225,14 +227,7 @@ impl<'a> Tokenizer<'a> {
                     }
                     validate_refs(&raw).map_err(|r| CodecError::malformed(self.codec, self.base + vstart, r))?;
                     self.pos = vstart + len + 1;
-                    attrs.push(Attr {
-                        ws_before: ws,
-                        name: aname,
-                        ws_before_eq,
-                        ws_after_eq,
-                        quote,
-                        raw,
-                    });
+                    attrs.push(Attr { ws_before: ws, name: aname, ws_before_eq, ws_after_eq, quote, raw });
                 }
                 Some(c) => return Err(self.err(format!("unexpected `{c}` in start tag"))),
                 None => return Err(self.err("unterminated start tag")),
@@ -495,7 +490,11 @@ impl XmlTree {
             }
         }
         if let Some(open) = stack.last() {
-            return Err(CodecError::malformed(codec, base + src.len(), format!("element `<{}>` is never closed", open.name)));
+            return Err(CodecError::malformed(
+                codec,
+                base + src.len(),
+                format!("element `<{}>` is never closed", open.name),
+            ));
         }
         let root = root.ok_or_else(|| CodecError::malformed(codec, base, "no root element"))?;
         Ok(XmlTree { bom, prolog, root, epilog })
@@ -703,13 +702,18 @@ fn project_element(e: &Element) -> Node {
 fn set_in(e: &mut Element, segs: &[PathSeg], full: &NodePath, value: &Node) -> CodecResult<()> {
     let Some((first, rest)) = segs.split_first() else {
         if !e.is_leaf() {
-            return Err(CodecError::structure(CODEC, full, "an element with attributes or children cannot become a scalar"));
+            return Err(CodecError::structure(
+                CODEC,
+                full,
+                "an element with attributes or children cannot become a scalar",
+            ));
         }
         let old = e.text();
         let existing = classify_scalar(&old);
         let target = normalize_scalar(CODEC, full, &existing, value, true)?;
-        let text = render_scalar(&old, &target)
-            .ok_or_else(|| CodecError::unencodable(CODEC, full, format!("{} cannot be written as XML text", target.kind().name())))?;
+        let text = render_scalar(&old, &target).ok_or_else(|| {
+            CodecError::unencodable(CODEC, full, format!("{} cannot be written as XML text", target.kind().name()))
+        })?;
         let back = classify_scalar(&text);
         if !semantic_eq(&back, &target) {
             return Err(CodecError::unencodable(
@@ -731,11 +735,8 @@ fn set_in(e: &mut Element, segs: &[PathSeg], full: &NodePath, value: &Node) -> C
         if !rest.is_empty() {
             return Err(CodecError::path_not_found(CODEC, full));
         }
-        let attr = e
-            .attrs
-            .iter_mut()
-            .find(|a| a.name == aname)
-            .ok_or_else(|| CodecError::path_not_found(CODEC, full))?;
+        let attr =
+            e.attrs.iter_mut().find(|a| a.name == aname).ok_or_else(|| CodecError::path_not_found(CODEC, full))?;
         let existing = Node::String(decode_entities(&attr.raw));
         let target = normalize_scalar(CODEC, full, &existing, value, false)?;
         let Node::String(s) = target else {
@@ -772,11 +773,7 @@ fn set_in(e: &mut Element, segs: &[PathSeg], full: &NodePath, value: &Node) -> C
         e.children.splice(idx..idx + 1, replacement);
         return Ok(());
     }
-    let pos = e
-        .child_keys()
-        .iter()
-        .position(|x| x == k)
-        .ok_or_else(|| CodecError::path_not_found(CODEC, full))?;
+    let pos = e.child_keys().iter().position(|x| x == k).ok_or_else(|| CodecError::path_not_found(CODEC, full))?;
     let child = e.child_element_mut(pos).ok_or_else(|| CodecError::path_not_found(CODEC, full))?;
     set_in(child, rest, full, value)
 }
@@ -790,9 +787,7 @@ pub struct XmlDocument {
 impl XmlDocument {
     /// Parses XML bytes (UTF-8).
     pub fn parse(bytes: &[u8]) -> CodecResult<XmlDocument> {
-        Ok(XmlDocument {
-            tree: XmlTree::parse(bytes, CODEC)?,
-        })
+        Ok(XmlDocument { tree: XmlTree::parse(bytes, CODEC)? })
     }
 
     /// Name of the root element.
@@ -828,7 +823,11 @@ impl Document for XmlDocument {
         let mut work = self.clone();
         apply_via_diff(&mut work, &current, root)?;
         if !semantic_eq(&work.to_ast(), root) {
-            return Err(CodecError::structure(CODEC, "$", "the edit cannot be represented exactly in this XML document"));
+            return Err(CodecError::structure(
+                CODEC,
+                "$",
+                "the edit cannot be represented exactly in this XML document",
+            ));
         }
         *self = work;
         Ok(())
@@ -847,7 +846,9 @@ impl Document for XmlDocument {
         if self.tree.bom {
             n.push("UTF-8 BOM".into());
         }
-        if let Some(XNode::Pi(p)) = self.tree.prolog.iter().find(|x| matches!(x, XNode::Pi(p) if p.starts_with("<?xml "))) {
+        if let Some(XNode::Pi(p)) =
+            self.tree.prolog.iter().find(|x| matches!(x, XNode::Pi(p) if p.starts_with("<?xml ")))
+        {
             n.push(format!("declaration {p}"));
         }
         if self.tree.doctype().is_some() {

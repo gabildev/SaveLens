@@ -299,7 +299,9 @@ fn large_tree_diff_is_fast() {
         Node::Map(
             (0..200)
                 .map(|i| {
-                    let inner = Node::Array((0..1000).map(|j| Node::I32(if i == 150 && j == 999 { marker } else { j })).collect());
+                    let inner = Node::Array(
+                        (0..1000).map(|j| Node::I32(if i == 150 && j == 999 { marker } else { j })).collect(),
+                    );
                     (format!("chunk{i}"), inner)
                 })
                 .collect(),

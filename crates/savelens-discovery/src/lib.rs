@@ -100,18 +100,10 @@ impl WindowsEnv {
     /// Reads `%USERPROFILE%`, `%APPDATA%`, `%LOCALAPPDATA%` and `%PUBLIC%`, falling back to the
     /// standard layout below `home` for anything missing.
     pub fn from_env(home: &Path) -> Self {
-        let var = |name: &str| {
-            std::env::var_os(name)
-                .filter(|v| !v.is_empty())
-                .map(PathBuf::from)
-        };
+        let var = |name: &str| std::env::var_os(name).filter(|v| !v.is_empty()).map(PathBuf::from);
         let profile = var("USERPROFILE").unwrap_or_else(|| home.to_path_buf());
-        let public = var("PUBLIC").unwrap_or_else(|| {
-            profile
-                .parent()
-                .map(|p| p.join("Public"))
-                .unwrap_or_else(|| profile.join("Public"))
-        });
+        let public = var("PUBLIC")
+            .unwrap_or_else(|| profile.parent().map(|p| p.join("Public")).unwrap_or_else(|| profile.join("Public")));
         let mut env = WindowsEnv::under_profile(&profile, &public);
         if let Some(v) = var("APPDATA") {
             env.app_data = v;
@@ -154,10 +146,7 @@ impl DiscoveryConfig {
             .or_else(|| std::env::var_os("HOME").map(PathBuf::from))
             .unwrap_or_else(|| PathBuf::from("."));
         let xdg = |name: &str, fallback: PathBuf| {
-            std::env::var_os(name)
-                .map(PathBuf::from)
-                .filter(|p| p.is_absolute())
-                .unwrap_or(fallback)
+            std::env::var_os(name).map(PathBuf::from).filter(|p| p.is_absolute()).unwrap_or(fallback)
         };
         let xdg_data = xdg("XDG_DATA_HOME", home.join(".local").join("share"));
         let xdg_config = xdg("XDG_CONFIG_HOME", home.join(".config"));
@@ -166,15 +155,7 @@ impl DiscoveryConfig {
             HostPlatform::Windows => WindowsEnv::from_env(&home),
             HostPlatform::Linux => WindowsEnv::under_profile(&home, &home.join("Public")),
         };
-        DiscoveryConfig {
-            home,
-            steam_roots: None,
-            host,
-            windows_env,
-            xdg_data,
-            xdg_config,
-            extra_rules: Vec::new(),
-        }
+        DiscoveryConfig { home, steam_roots: None, host, windows_env, xdg_data, xdg_config, extra_rules: Vec::new() }
     }
 
     /// A configuration rooted entirely below `home` (XDG dirs and the Windows profile are
@@ -293,11 +274,7 @@ impl DiscoveryReport {
     pub fn game_for_path(&self, path: &Path) -> Option<&DiscoveredGame> {
         let mut best: Option<(usize, &DiscoveredGame)> = None;
         for game in &self.games {
-            let mut candidates: Vec<&Path> = game
-                .save_locations
-                .iter()
-                .map(|l| l.root.as_path())
-                .collect();
+            let mut candidates: Vec<&Path> = game.save_locations.iter().map(|l| l.root.as_path()).collect();
             if let Some(dir) = &game.install_dir {
                 candidates.push(dir);
             }
@@ -328,10 +305,7 @@ pub fn discover(cfg: &DiscoveryConfig) -> Result<DiscoveryReport, DiscoveryError
             let mut out = Vec::new();
             for root in explicit {
                 if !root.is_dir() {
-                    warnings.push(format!(
-                        "configured Steam root {} does not exist",
-                        root.display()
-                    ));
+                    warnings.push(format!("configured Steam root {} does not exist", root.display()));
                     continue;
                 }
                 let c = normalize_path(root);
@@ -379,20 +353,12 @@ pub fn discover(cfg: &DiscoveryConfig) -> Result<DiscoveryReport, DiscoveryError
         let install = m.install_path();
         let install_dir = install.is_dir().then_some(install);
         let runtime = match prefixes.get(&m.app_id) {
-            Some(pfx) => GameRuntime::Proton {
-                prefix: pfx.clone(),
-            },
+            Some(pfx) => GameRuntime::Proton { prefix: pfx.clone() },
             None if install_dir.is_some() => GameRuntime::Native,
             None => GameRuntime::Unknown,
         };
         let engine_info = install_dir.as_deref().and_then(detect_engine);
-        let ctx = paths::PathContext::new(
-            cfg,
-            &runtime,
-            install_dir.as_deref(),
-            &m.install_dir_name,
-            Some(&m.root),
-        );
+        let ctx = paths::PathContext::new(cfg, &runtime, install_dir.as_deref(), &m.install_dir_name, Some(&m.root));
 
         let mut locations: Vec<SaveLocation> = Vec::new();
         for rule in rule_set.matching(Some(m.app_id), &m.name) {
@@ -405,11 +371,7 @@ pub fn discover(cfg: &DiscoveryConfig) -> Result<DiscoveryReport, DiscoveryError
             if let Some(info) = &engine_info {
                 match engines::heuristic_locations(info, &ctx, &m.name) {
                     Ok(locs) => paths::push_unique(&mut locations, locs),
-                    Err(e) => warnings.push(format!(
-                        "{} heuristics for {}: {e}",
-                        engine_name(info.engine),
-                        m.name
-                    )),
+                    Err(e) => warnings.push(format!("{} heuristics for {}: {e}", engine_name(info.engine), m.name)),
                 }
             }
         }
@@ -422,19 +384,9 @@ pub fn discover(cfg: &DiscoveryConfig) -> Result<DiscoveryReport, DiscoveryError
             save_locations: locations,
         });
     }
-    games.sort_by(|a, b| {
-        a.name
-            .to_lowercase()
-            .cmp(&b.name.to_lowercase())
-            .then(a.app_id.cmp(&b.app_id))
-    });
+    games.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()).then(a.app_id.cmp(&b.app_id)));
 
-    Ok(DiscoveryReport {
-        steam_roots: roots,
-        libraries: public_libraries,
-        games,
-        warnings,
-    })
+    Ok(DiscoveryReport { steam_roots: roots, libraries: public_libraries, games, warnings })
 }
 
 fn engine_name(engine: Engine) -> &'static str {

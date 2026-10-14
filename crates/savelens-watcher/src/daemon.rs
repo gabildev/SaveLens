@@ -57,11 +57,7 @@ pub struct DaemonOptions {
 
 impl Default for DaemonOptions {
     fn default() -> Self {
-        DaemonOptions {
-            hotkeys: true,
-            games: None,
-            tick: Duration::from_millis(50),
-        }
+        DaemonOptions { hotkeys: true, games: None, tick: Duration::from_millis(50) }
     }
 }
 
@@ -82,9 +78,7 @@ impl DaemonHandle {
     pub fn stop(mut self) -> EngineResult<()> {
         let _ = self.stop.send(());
         match self.thread.take() {
-            Some(t) => t
-                .join()
-                .map_err(|_| EngineError::Watch("daemon thread panicked".into()))?,
+            Some(t) => t.join().map_err(|_| EngineError::Watch("daemon thread panicked".into()))?,
             None => Ok(()),
         }
     }
@@ -118,8 +112,12 @@ fn is_relevant(kind: &EventKind) -> (bool, bool) {
     match kind {
         EventKind::Access(AccessKind::Close(AccessMode::Write)) => (true, true),
         EventKind::Create(_) => (true, false),
-        EventKind::Modify(ModifyKind::Data(_)) | EventKind::Modify(ModifyKind::Any) | EventKind::Modify(ModifyKind::Other) => (true, false),
-        EventKind::Modify(ModifyKind::Name(RenameMode::To)) | EventKind::Modify(ModifyKind::Name(RenameMode::Both)) => (true, true),
+        EventKind::Modify(ModifyKind::Data(_))
+        | EventKind::Modify(ModifyKind::Any)
+        | EventKind::Modify(ModifyKind::Other) => (true, false),
+        EventKind::Modify(ModifyKind::Name(RenameMode::To)) | EventKind::Modify(ModifyKind::Name(RenameMode::Both)) => {
+            (true, true)
+        }
         EventKind::Modify(ModifyKind::Name(RenameMode::Any)) => (true, false),
         _ => (false, false),
     }
@@ -143,11 +141,7 @@ impl Daemon {
             .name("savelens-daemon".into())
             .spawn(move || daemon.run(stop_rx, ev_tx))
             .map_err(|e| EngineError::Watch(format!("cannot spawn daemon: {e}")))?;
-        Ok(DaemonHandle {
-            stop: stop_tx,
-            events: ev_rx,
-            thread: Some(thread),
-        })
+        Ok(DaemonHandle { stop: stop_tx, events: ev_rx, thread: Some(thread) })
     }
 
     fn games(&self) -> EngineResult<Vec<GameRecord>> {
@@ -176,9 +170,7 @@ impl Daemon {
             match HotkeyService::start(&cfg.hotkeys) {
                 Ok(h) => Some(h),
                 Err(e) => {
-                    let _ = events.send(DaemonEvent::Warning {
-                        message: format!("global hotkeys disabled: {e}"),
-                    });
+                    let _ = events.send(DaemonEvent::Warning { message: format!("global hotkeys disabled: {e}") });
                     None
                 }
             }
@@ -188,9 +180,9 @@ impl Daemon {
         let hotkey_rx = hotkeys.as_ref().map(|h| h.actions().clone()).unwrap_or_else(crossbeam_channel::never);
 
         let refresh = |watcher: &mut notify::RecommendedWatcher,
-                           watched: &mut HashMap<GameId, (PathBuf, String)>,
-                           games: &mut Vec<GameRecord>,
-                           events: &Sender<DaemonEvent>|
+                       watched: &mut HashMap<GameId, (PathBuf, String)>,
+                       games: &mut Vec<GameRecord>,
+                       events: &Sender<DaemonEvent>|
          -> EngineResult<()> {
             *games = self.games()?;
             for g in games.iter() {
@@ -198,10 +190,8 @@ impl Daemon {
                     match watcher.watch(&g.save_root, RecursiveMode::Recursive) {
                         Ok(()) => {
                             slot.insert((g.save_root.clone(), g.name.clone()));
-                            let _ = events.send(DaemonEvent::Watching {
-                                game: g.name.clone(),
-                                root: g.save_root.clone(),
-                            });
+                            let _ =
+                                events.send(DaemonEvent::Watching { game: g.name.clone(), root: g.save_root.clone() });
                         }
                         Err(e) => {
                             let _ = events.send(DaemonEvent::Warning {
@@ -345,9 +335,7 @@ impl Daemon {
         let bytes = match std::fs::read(path) {
             Ok(b) => b,
             Err(e) => {
-                let _ = events.send(DaemonEvent::Warning {
-                    message: format!("cannot read {}: {e}", path.display()),
-                });
+                let _ = events.send(DaemonEvent::Warning { message: format!("cannot read {}: {e}", path.display()) });
                 return Ok(None);
             }
         };
@@ -374,15 +362,10 @@ impl Daemon {
                     });
                 }
                 Ok(None) => {
-                    let _ = events.send(DaemonEvent::Unchanged {
-                        game: game.name.clone(),
-                        rel_path: p.rel.clone(),
-                    });
+                    let _ = events.send(DaemonEvent::Unchanged { game: game.name.clone(), rel_path: p.rel.clone() });
                 }
                 Err(e) => {
-                    let _ = events.send(DaemonEvent::Error {
-                        message: format!("commit of {} failed: {e}", p.rel),
-                    });
+                    let _ = events.send(DaemonEvent::Error { message: format!("commit of {} failed: {e}", p.rel) });
                 }
             }
         }
@@ -401,9 +384,7 @@ impl Daemon {
                 }
                 Ok(None) => {}
                 Err(e) => {
-                    let _ = events.send(DaemonEvent::Error {
-                        message: format!("trainer on {} failed: {e}", p.rel),
-                    });
+                    let _ = events.send(DaemonEvent::Error { message: format!("trainer on {} failed: {e}", p.rel) });
                 }
             }
         }
@@ -422,7 +403,12 @@ impl Daemon {
         }
     }
 
-    fn target_game(&self, explicit: Option<GameId>, active: Option<GameId>, games: &[GameRecord]) -> Option<GameRecord> {
+    fn target_game(
+        &self,
+        explicit: Option<GameId>,
+        active: Option<GameId>,
+        games: &[GameRecord],
+    ) -> Option<GameRecord> {
         let id = explicit.or(active).or_else(|| games.first().map(|g| g.id))?;
         self.engine.game(id).ok()
     }
@@ -448,9 +434,7 @@ impl Daemon {
         own_writes: &mut HashMap<PathBuf, (String, Instant)>,
     ) {
         let err = |e: EngineError| {
-            let _ = events.send(DaemonEvent::Error {
-                message: format!("{}: {e}", action.label()),
-            });
+            let _ = events.send(DaemonEvent::Error { message: format!("{}: {e}", action.label()) });
         };
         match action {
             HotkeyAction::QuickSnapshot => {
@@ -461,10 +445,8 @@ impl Daemon {
                 for g in targets {
                     match self.engine.snapshot(g.id, "quick snapshot (hotkey)", CommitKind::Manual) {
                         Ok(c) => {
-                            let _ = events.send(DaemonEvent::Snapshot {
-                                game: g.name.clone(),
-                                commit: c.map(|c| c.id),
-                            });
+                            let _ =
+                                events.send(DaemonEvent::Snapshot { game: g.name.clone(), commit: c.map(|c| c.id) });
                         }
                         Err(e) => err(e),
                     }
@@ -475,10 +457,7 @@ impl Daemon {
                 match self.engine.quick_rollback(g.id) {
                     Ok(rep) => {
                         self.remember_game_files(g.id, own_writes);
-                        let _ = events.send(DaemonEvent::Rollback {
-                            game: g.name.clone(),
-                            files: rep.written,
-                        });
+                        let _ = events.send(DaemonEvent::Rollback { game: g.name.clone(), files: rep.written });
                     }
                     Err(e) => err(e),
                 }
@@ -493,10 +472,7 @@ impl Daemon {
                         if let Ok(b) = std::fs::read(&rep.path) {
                             own_writes.insert(rep.path.clone(), (blake(&b), Instant::now()));
                         }
-                        let _ = events.send(DaemonEvent::PanicRestored {
-                            path: rep.path,
-                            tag: rep.restored_tag,
-                        });
+                        let _ = events.send(DaemonEvent::PanicRestored { path: rep.path, tag: rep.restored_tag });
                     }
                     Err(e) => err(e),
                 }
@@ -545,9 +521,7 @@ impl Daemon {
                 "panic-restore" => Some(HotkeyAction::PanicRestore),
                 "toggle-trainer" => Some(HotkeyAction::ToggleTrainer),
                 other => {
-                    let _ = events.send(DaemonEvent::Warning {
-                        message: format!("unknown request `{other}`"),
-                    });
+                    let _ = events.send(DaemonEvent::Warning { message: format!("unknown request `{other}`") });
                     None
                 }
             };

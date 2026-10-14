@@ -24,10 +24,7 @@ impl VdfNode {
     /// Returns the first child whose key matches `key` (ASCII case-insensitive).
     pub fn get(&self, key: &str) -> Option<&VdfNode> {
         match self {
-            VdfNode::Map(entries) => entries
-                .iter()
-                .find(|(k, _)| k.eq_ignore_ascii_case(key))
-                .map(|(_, v)| v),
+            VdfNode::Map(entries) => entries.iter().find(|(k, _)| k.eq_ignore_ascii_case(key)).map(|(_, v)| v),
             VdfNode::Value(_) => None,
         }
     }
@@ -76,11 +73,7 @@ pub fn parse(text: &str) -> Result<VdfNode, DiscoveryError> {
 /// Like [`parse`] but returns the warnings (ignored `#include`/`#base` directives) instead of
 /// logging them.
 pub fn parse_with_warnings(text: &str) -> Result<(VdfNode, Vec<String>), DiscoveryError> {
-    let mut parser = Parser {
-        lexer: Lexer::new(text),
-        peeked: None,
-        warnings: Vec::new(),
-    };
+    let mut parser = Parser { lexer: Lexer::new(text), peeked: None, warnings: Vec::new() };
     let entries = parser.parse_entries(None)?;
     Ok((VdfNode::Map(entries), parser.warnings))
 }
@@ -106,19 +99,13 @@ struct Lexer<'a> {
 }
 
 fn err(line: usize, message: impl Into<String>) -> DiscoveryError {
-    DiscoveryError::Vdf {
-        line,
-        message: message.into(),
-    }
+    DiscoveryError::Vdf { line, message: message.into() }
 }
 
 impl<'a> Lexer<'a> {
     fn new(text: &'a str) -> Self {
         let text = text.strip_prefix('\u{feff}').unwrap_or(text);
-        Lexer {
-            chars: text.chars().peekable(),
-            line: 1,
-        }
+        Lexer { chars: text.chars().peekable(), line: 1 }
     }
 
     fn bump(&mut self) -> Option<char> {
@@ -158,10 +145,7 @@ impl<'a> Lexer<'a> {
         self.skip_trivia();
         let line = self.line;
         let Some(c) = self.chars.peek().copied() else {
-            return Ok(Token {
-                kind: TokenKind::Eof,
-                line,
-            });
+            return Ok(Token { kind: TokenKind::Eof, line });
         };
         let kind = match c {
             '{' => {
@@ -174,10 +158,7 @@ impl<'a> Lexer<'a> {
             }
             '"' => {
                 self.bump();
-                TokenKind::Str {
-                    text: self.quoted(line)?,
-                    quoted: true,
-                }
+                TokenKind::Str { text: self.quoted(line)?, quoted: true }
             }
             '[' => {
                 self.bump();
@@ -208,10 +189,7 @@ impl<'a> Lexer<'a> {
                     text.push(c);
                     self.bump();
                 }
-                TokenKind::Str {
-                    text,
-                    quoted: false,
-                }
+                TokenKind::Str { text, quoted: false }
             }
         };
         Ok(Token { kind, line })
@@ -282,10 +260,7 @@ impl Parser<'_> {
     }
 
     /// Parses entries until EOF (`open_line == None`) or the matching `}`.
-    fn parse_entries(
-        &mut self,
-        open_line: Option<usize>,
-    ) -> Result<Vec<(String, VdfNode)>, DiscoveryError> {
+    fn parse_entries(&mut self, open_line: Option<usize>) -> Result<Vec<(String, VdfNode)>, DiscoveryError> {
         let mut entries = Vec::new();
         loop {
             let tok = self.next()?;
@@ -294,9 +269,7 @@ impl Parser<'_> {
                     return match open_line {
                         Some(l) => Err(err(
                             tok.line,
-                            format!(
-                                "unexpected end of input: block opened at line {l} is not closed"
-                            ),
+                            format!("unexpected end of input: block opened at line {l} is not closed"),
                         )),
                         None => Ok(entries),
                     };
@@ -318,16 +291,10 @@ impl Parser<'_> {
                     let file = match target.kind {
                         TokenKind::Str { text, .. } => text,
                         _ => {
-                            return Err(err(
-                                target.line,
-                                format!("`{key}` directive must be followed by a file name"),
-                            ))
+                            return Err(err(target.line, format!("`{key}` directive must be followed by a file name")))
                         }
                     };
-                    self.warnings.push(format!(
-                        "line {}: ignored `{key} \"{file}\"` directive",
-                        tok.line
-                    ));
+                    self.warnings.push(format!("line {}: ignored `{key} \"{file}\"` directive", tok.line));
                     continue;
                 }
             }
@@ -337,22 +304,13 @@ impl Parser<'_> {
                 TokenKind::Str { text, .. } => VdfNode::Value(text),
                 TokenKind::Open => VdfNode::Map(self.parse_entries(Some(value_tok.line))?),
                 TokenKind::Eof => {
-                    return Err(err(
-                        value_tok.line,
-                        format!("unexpected end of input: key `{key}` has no value"),
-                    ))
+                    return Err(err(value_tok.line, format!("unexpected end of input: key `{key}` has no value")))
                 }
                 TokenKind::Close => {
-                    return Err(err(
-                        value_tok.line,
-                        format!("key `{key}` is followed by `}}` instead of a value"),
-                    ))
+                    return Err(err(value_tok.line, format!("key `{key}` is followed by `}}` instead of a value")))
                 }
                 TokenKind::Conditional => {
-                    return Err(err(
-                        value_tok.line,
-                        format!("key `{key}` is followed by two conditionals"),
-                    ))
+                    return Err(err(value_tok.line, format!("key `{key}` is followed by two conditionals")))
                 }
             };
             self.skip_conditional()?;
@@ -399,14 +357,8 @@ mod tests {
         let one = lf.get("1").unwrap();
         assert_eq!(one.get_str("path"), Some("/mnt/games/SteamLibrary"));
         assert_eq!(one.get_str("label"), Some("Big Disk"));
-        let apps: Vec<&str> = lf
-            .get_path(&["0", "apps"])
-            .unwrap()
-            .as_map()
-            .unwrap()
-            .iter()
-            .map(|(k, _)| k.as_str())
-            .collect();
+        let apps: Vec<&str> =
+            lf.get_path(&["0", "apps"]).unwrap().as_map().unwrap().iter().map(|(k, _)| k.as_str()).collect();
         assert_eq!(apps, vec!["228980", "413150"]);
     }
 
@@ -440,10 +392,7 @@ Root // trailing comment
         assert_eq!(r.get_str("lit"), Some("C:\\Program Files\\x"));
         assert_eq!(r.get_str("slashes"), Some("a\\b"));
         assert_eq!(r.get_str("url"), Some("http://x"));
-        assert_eq!(
-            r.get_path(&["nested", "inner"]).and_then(VdfNode::as_str),
-            Some("1")
-        );
+        assert_eq!(r.get_path(&["nested", "inner"]).and_then(VdfNode::as_str), Some("1"));
     }
 
     #[test]

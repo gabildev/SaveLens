@@ -37,11 +37,7 @@ pub struct PipelineOptions {
 
 impl Default for PipelineOptions {
     fn default() -> Self {
-        PipelineOptions {
-            max_layers: 8,
-            xor_bruteforce: true,
-            hunt_checksums: true,
-        }
+        PipelineOptions { max_layers: 8, xor_bruteforce: true, hunt_checksums: true }
     }
 }
 
@@ -66,11 +62,7 @@ impl std::fmt::Debug for EnvelopePipeline {
 impl EnvelopePipeline {
     /// Pipeline with explicit registry and keys.
     pub fn new(registry: CodecRegistry, keys: KeyDatabase, options: PipelineOptions) -> Self {
-        EnvelopePipeline {
-            registry: Arc::new(registry),
-            keys: Arc::new(keys),
-            options,
-        }
+        EnvelopePipeline { registry: Arc::new(registry), keys: Arc::new(keys), options }
     }
 
     /// Built-in codecs, built-in + user key profiles.
@@ -212,10 +204,9 @@ impl EnvelopePipeline {
 
     /// Opens with a forced structural codec (layers are still peeled).
     pub fn open_with_codec(&self, data: &[u8], ctx: &DetectContext, codec_id: &str) -> CodecResult<OpenedSave> {
-        let codec = self
-            .registry
-            .get(codec_id)
-            .ok_or_else(|| CodecError::NoCodec(format!("unknown codec `{codec_id}`; available: {:?}", self.registry.ids())))?;
+        let codec = self.registry.get(codec_id).ok_or_else(|| {
+            CodecError::NoCodec(format!("unknown codec `{codec_id}`; available: {:?}", self.registry.ids()))
+        })?;
         let (layers, payload) = self.peel(data, ctx);
         let doc = codec.decode(&payload, ctx)?;
         Ok(OpenedSave::assemble(data, layers, payload, doc, Vec::new()))
@@ -253,15 +244,18 @@ fn first_difference(a: &[u8], b: &[u8]) -> usize {
 }
 
 impl OpenedSave {
-    fn assemble(data: &[u8], layers: Vec<Box<dyn Layer>>, payload: Vec<u8>, doc: Box<dyn Document>, mut notes: Vec<String>) -> OpenedSave {
+    fn assemble(
+        data: &[u8],
+        layers: Vec<Box<dyn Layer>>,
+        payload: Vec<u8>,
+        doc: Box<dyn Document>,
+        mut notes: Vec<String>,
+    ) -> OpenedSave {
         let ent = entropy::shannon(data);
         notes.push(format!("entropy {ent:.2} bits/byte: {}", entropy::describe(ent)));
         for l in &layers {
             if !l.exact_reencode() {
-                notes.push(format!(
-                    "{}: edits will produce a valid but not bit-identical stream",
-                    l.descriptor()
-                ));
+                notes.push(format!("{}: edits will produce a valid but not bit-identical stream", l.descriptor()));
             }
         }
         notes.extend(doc.notes());
@@ -273,13 +267,7 @@ impl OpenedSave {
             entropy: ent,
             notes,
         };
-        let mut s = OpenedSave {
-            original: Arc::new(data.to_vec()),
-            layers,
-            payload,
-            doc,
-            envelope,
-        };
+        let mut s = OpenedSave { original: Arc::new(data.to_vec()), layers, payload, doc, envelope };
         let status = s.verify_round_trip();
         if !status.is_lossless() {
             s.envelope
@@ -364,23 +352,11 @@ impl OpenedSave {
     /// envelope layer, so checksums / compression / encryption are still
     /// recomputed on save).
     pub fn into_raw_mode(self) -> OpenedSave {
-        let OpenedSave {
-            original,
-            layers,
-            payload,
-            mut envelope,
-            ..
-        } = self;
+        let OpenedSave { original, layers, payload, mut envelope, .. } = self;
         let doc: Box<dyn Document> = Box::new(RawDocument::new(payload.clone()));
         envelope.codec = "raw".into();
         envelope.notes.push("raw in-place edit mode".into());
-        let mut s = OpenedSave {
-            original,
-            layers,
-            payload,
-            doc,
-            envelope,
-        };
+        let mut s = OpenedSave { original, layers, payload, doc, envelope };
         let status = s.verify_round_trip();
         s.envelope.round_trip = Some(status);
         s
@@ -488,12 +464,9 @@ mod tests {
     #[test]
     fn es3_gzip_json_with_crc_trailer() {
         // JSON -> gzip -> ES3 encryption -> CRC32 trailer.
-        let gz = StreamParams::Gzip {
-            header: vec![0x1f, 0x8b, 8, 0, 0, 0, 0, 0, 0, 0xff],
-            level: 6,
-        }
-        .compress(&json())
-        .unwrap();
+        let gz = StreamParams::Gzip { header: vec![0x1f, 0x8b, 8, 0, 0, 0, 0, 0, 0, 0xff], level: 6 }
+            .compress(&json())
+            .unwrap();
         let enc = es3_encrypt(b"password", &[7; 16], &gz).unwrap();
         let rule = ChecksumRule {
             algorithm: ChecksumAlgorithm::Crc32,
@@ -533,19 +506,12 @@ mod tests {
         assert!(matches!(s.layers()[0], LayerDescriptor::Base64 { .. }));
         assert!(matches!(
             s.layers()[1],
-            LayerDescriptor::Compression {
-                algorithm: CompressionAlgorithm::Zlib,
-                exact: true,
-                ..
-            }
+            LayerDescriptor::Compression { algorithm: CompressionAlgorithm::Zlib, exact: true, .. }
         ));
         s.set(&NodePath::parse("Quests.Main").unwrap(), Node::String("Completed".into())).unwrap();
         let out = s.encode_verified(&pipeline(), &DetectContext::default()).unwrap();
         let re = pipeline().open(&out, &DetectContext::default()).unwrap();
-        assert_eq!(
-            re.root().get(&NodePath::parse("Quests.Main").unwrap()),
-            Some(&Node::String("Completed".into()))
-        );
+        assert_eq!(re.root().get(&NodePath::parse("Quests.Main").unwrap()), Some(&Node::String("Completed".into())));
     }
 
     #[test]

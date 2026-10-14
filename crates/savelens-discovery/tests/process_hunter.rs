@@ -35,11 +35,7 @@ fn open_writers_sees_write_handles_only() {
     drop(r);
 
     // Read+write handles count as writers too.
-    let rw = fs::OpenOptions::new()
-        .read(true)
-        .write(true)
-        .open(&path)
-        .unwrap();
+    let rw = fs::OpenOptions::new().read(true).write(true).open(&path).unwrap();
     assert!(open_writers(&path).iter().any(|p| p.pid == me));
     drop(rw);
     assert!(!open_writers(&path).iter().any(|p| p.pid == me));
@@ -84,12 +80,7 @@ fn hunt_detects_repeatedly_written_save() {
     writer.join().unwrap();
 
     assert_eq!(report.roots_watched, vec![root.clone()]);
-    let pos = |name: &str| {
-        report
-            .candidates
-            .iter()
-            .position(|c| c.path.file_name().is_some_and(|n| n == name))
-    };
+    let pos = |name: &str| report.candidates.iter().position(|c| c.path.file_name().is_some_and(|n| n == name));
     let sav_idx = pos("slot1.sav").unwrap_or_else(|| panic!("no save candidate: {report:?}"));
     let log_idx = pos("debug.log").unwrap_or_else(|| panic!("no log candidate: {report:?}"));
     let sav = &report.candidates[sav_idx];

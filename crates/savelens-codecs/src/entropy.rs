@@ -40,10 +40,8 @@ pub fn printable_ratio(data: &[u8]) -> f64 {
     if data.is_empty() {
         return 0.0;
     }
-    let n = data
-        .iter()
-        .filter(|&&b| (0x20..0x7f).contains(&b) || matches!(b, b'\n' | b'\r' | b'\t') || b >= 0x80)
-        .count();
+    let n =
+        data.iter().filter(|&&b| (0x20..0x7f).contains(&b) || matches!(b, b'\n' | b'\r' | b'\t') || b >= 0x80).count();
     n as f64 / data.len() as f64
 }
 

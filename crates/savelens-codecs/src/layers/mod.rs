@@ -56,11 +56,7 @@ pub struct Identity {
 impl Identity {
     /// Records an `(outer, inner)` pair.
     pub fn new(outer: &[u8], inner: &[u8]) -> Self {
-        Identity {
-            inner_hash: Hash32::of_bytes(inner),
-            inner_len: inner.len(),
-            outer: outer.to_vec(),
-        }
+        Identity { inner_hash: Hash32::of_bytes(inner), inner_len: inner.len(), outer: outer.to_vec() }
     }
 
     /// Returns the original outer bytes when `inner` is the original payload.

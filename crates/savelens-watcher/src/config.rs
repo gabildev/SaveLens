@@ -79,10 +79,7 @@ impl SaveLensConfig {
         match std::fs::read_to_string(&path) {
             Ok(text) => toml::from_str(&text).map_err(|e| EngineError::Config(format!("{}: {e}", path.display()))),
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(SaveLensConfig::default()),
-            Err(e) => Err(EngineError::Io {
-                path: path.clone(),
-                source: e,
-            }),
+            Err(e) => Err(EngineError::Io { path: path.clone(), source: e }),
         }
     }
 

@@ -14,7 +14,9 @@ use savelens_core::{Node, NodeMap, NodePath, PathSeg};
 
 use super::ini::{dedup_keys, normalize_scalar, render_float, semantic_eq};
 use super::xml::{starts_like_xml, Element, XNode, XmlTree, MAX_DEPTH};
-use crate::document::{apply_via_diff, coerce_like, Capabilities, Confidence, DetectContext, Document, PathEditable, StructuralCodec};
+use crate::document::{
+    apply_via_diff, coerce_like, Capabilities, Confidence, DetectContext, Document, PathEditable, StructuralCodec,
+};
 use crate::error::{CodecError, CodecResult};
 
 const CODEC: &str = "plist";
@@ -62,11 +64,7 @@ fn dict_entries(e: &Element) -> CodecResult<Vec<(String, usize)>> {
     let mut raw_keys = Vec::with_capacity(kids.len() / 2);
     for pair in kids.chunks(2) {
         if pair[0].name != "key" {
-            return Err(CodecError::malformed(
-                CODEC,
-                0,
-                format!("<dict> expects <key>, found <{}>", pair[0].name),
-            ));
+            return Err(CodecError::malformed(CODEC, 0, format!("<dict> expects <key>, found <{}>", pair[0].name)));
         }
         if pair[1].name == "key" {
             return Err(CodecError::malformed(CODEC, 0, "<dict> has two consecutive <key> elements"));
@@ -172,17 +170,16 @@ fn layout_base64(old_text: &str, bytes: &[u8]) -> String {
     let width = first.trim_end_matches(is_xml_ws).len().max(4);
     let second = lines[1];
     let indent = &second[..second.len() - second.trim_start_matches([' ', '\t']).len()];
-    let chunks: Vec<&str> = encoded
-        .as_bytes()
-        .chunks(width)
-        .map(|c| std::str::from_utf8(c).unwrap_or_default())
-        .collect();
+    let chunks: Vec<&str> =
+        encoded.as_bytes().chunks(width).map(|c| std::str::from_utf8(c).unwrap_or_default()).collect();
     format!("{lead}{}{trail}", chunks.join(&format!("{eol}{indent}")))
 }
 
 fn set_scalar(e: &mut Element, path: &NodePath, value: &Node) -> CodecResult<()> {
     match e.name.as_str() {
-        "dict" | "array" => Err(CodecError::structure(CODEC, path, "containers cannot be replaced; edit their values instead")),
+        "dict" | "array" => {
+            Err(CodecError::structure(CODEC, path, "containers cannot be replaced; edit their values instead"))
+        }
         "integer" => {
             let old = e.text();
             let existing = project(e, 0)?;
@@ -206,7 +203,8 @@ fn set_scalar(e: &mut Element, path: &NodePath, value: &Node) -> CodecResult<()>
             } else if x.is_infinite() {
                 if x > 0.0 { "+infinity" } else { "-infinity" }.to_string()
             } else {
-                render_float(old.trim(), x).ok_or_else(|| CodecError::unencodable(CODEC, path, format!("cannot write {x} as <real>")))?
+                render_float(old.trim(), x)
+                    .ok_or_else(|| CodecError::unencodable(CODEC, path, format!("cannot write {x} as <real>")))?
             };
             e.set_text(&keep_padding(&old, &text));
             Ok(())
@@ -286,11 +284,7 @@ impl PlistDocument {
 
     fn value_element(&self) -> CodecResult<&Element> {
         let i = top_value(&self.tree.root)?;
-        self.tree
-            .root
-            .child_elements()
-            .nth(i)
-            .ok_or_else(|| CodecError::malformed(CODEC, 0, "<plist> is empty"))
+        self.tree.root.child_elements().nth(i).ok_or_else(|| CodecError::malformed(CODEC, 0, "<plist> is empty"))
     }
 
     fn project(&self) -> CodecResult<Node> {
@@ -305,11 +299,8 @@ impl PathEditable for PlistDocument {
 
     fn set_value(&mut self, path: &NodePath, value: &Node) -> CodecResult<()> {
         let i = top_value(&self.tree.root)?;
-        let top = self
-            .tree
-            .root
-            .child_element_mut(i)
-            .ok_or_else(|| CodecError::malformed(CODEC, 0, "<plist> is empty"))?;
+        let top =
+            self.tree.root.child_element_mut(i).ok_or_else(|| CodecError::malformed(CODEC, 0, "<plist> is empty"))?;
         set_in(top, path.segments(), path, value)
     }
 }
@@ -330,7 +321,11 @@ impl Document for PlistDocument {
         apply_via_diff(&mut work, &current, root)?;
         let got = work.project()?;
         if !semantic_eq(&got, root) {
-            return Err(CodecError::structure(CODEC, "$", "the edit cannot be represented exactly in this property list"));
+            return Err(CodecError::structure(
+                CODEC,
+                "$",
+                "the edit cannot be represented exactly in this property list",
+            ));
         }
         *self = work;
         Ok(())
@@ -434,7 +429,11 @@ mod tests {
             .replace("<integer>1</integer>", "<integer>7</integer>")
             .replace(
                 "\tAAECAwQFBgcICQoL\n\tDA0ODw==\n",
-                &format!("\t{}\n\t{}\n", &b64().encode((100u8..120).collect::<Vec<u8>>())[..16], &b64().encode((100u8..120).collect::<Vec<u8>>())[16..]),
+                &format!(
+                    "\t{}\n\t{}\n",
+                    &b64().encode((100u8..120).collect::<Vec<u8>>())[..16],
+                    &b64().encode((100u8..120).collect::<Vec<u8>>())[16..]
+                ),
             );
         assert_eq!(out, expected);
         let re = PlistDocument::parse(out.as_bytes()).unwrap();

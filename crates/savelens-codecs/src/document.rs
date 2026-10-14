@@ -28,10 +28,7 @@ pub struct DetectContext {
 impl DetectContext {
     /// Context for a file name.
     pub fn for_file(name: impl Into<String>) -> Self {
-        DetectContext {
-            file_name: Some(name.into()),
-            app_id: None,
-        }
+        DetectContext { file_name: Some(name.into()), app_id: None }
     }
 
     /// Lower-case file extension without the dot.
@@ -52,14 +49,8 @@ pub struct Capabilities {
 }
 
 impl Capabilities {
-    pub const VALUES_ONLY: Capabilities = Capabilities {
-        edit_values: true,
-        edit_structure: false,
-    };
-    pub const FULL: Capabilities = Capabilities {
-        edit_values: true,
-        edit_structure: true,
-    };
+    pub const VALUES_ONLY: Capabilities = Capabilities { edit_values: true, edit_structure: false };
+    pub const FULL: Capabilities = Capabilities { edit_values: true, edit_structure: true };
 }
 
 /// A parsed, lossless, editable representation of a payload.
@@ -154,7 +145,9 @@ pub fn apply_via_diff<D: PathEditable>(doc: &mut D, current: &Node, edited: &Nod
     for c in &d.changes {
         if matches!(c.kind, ChangeKind::Added { .. } | ChangeKind::Removed { .. }) {
             if let Some(parent) = c.path.parent() {
-                if matches!(current.get(&parent), Some(Node::Array(_))) && !replaced_arrays.iter().any(|p| p.is_prefix_of(&parent)) {
+                if matches!(current.get(&parent), Some(Node::Array(_)))
+                    && !replaced_arrays.iter().any(|p| p.is_prefix_of(&parent))
+                {
                     replaced_arrays.retain(|p| !parent.is_prefix_of(p));
                     replaced_arrays.push(parent);
                 }

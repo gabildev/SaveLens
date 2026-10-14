@@ -23,12 +23,7 @@ pub struct EngineInfo {
 
 impl EngineInfo {
     fn new(engine: Engine) -> Self {
-        EngineInfo {
-            engine,
-            company: None,
-            product: None,
-            project: None,
-        }
+        EngineInfo { engine, company: None, product: None, project: None }
     }
 }
 
@@ -55,9 +50,7 @@ fn list(dir: &Path) -> Listing {
 }
 
 fn has_ext(name: &str, ext: &str) -> bool {
-    Path::new(name)
-        .extension()
-        .is_some_and(|e| e.to_string_lossy().eq_ignore_ascii_case(ext))
+    Path::new(name).extension().is_some_and(|e| e.to_string_lossy().eq_ignore_ascii_case(ext))
 }
 
 /// Finds the first file whose name satisfies `pred`, searching up to `depth` levels.
@@ -69,9 +62,7 @@ fn find_file(dir: &Path, depth: usize, pred: &dyn Fn(&str) -> bool) -> Option<St
     if depth == 0 {
         return None;
     }
-    l.dirs
-        .iter()
-        .find_map(|d| find_file(&dir.join(d), depth - 1, pred))
+    l.dirs.iter().find_map(|d| find_file(&dir.join(d), depth - 1, pred))
 }
 
 /// Detects the engine of a game from its install directory.
@@ -93,21 +84,14 @@ pub fn detect_engine(install: &Path) -> Option<EngineInfo> {
             return Some(EngineInfo::new(Engine::Unity));
         }
     }
-    if root
-        .files
-        .iter()
-        .any(|f| f == "UnityPlayer.dll" || f == "UnityPlayer.so")
-    {
+    if root.files.iter().any(|f| f == "UnityPlayer.dll" || f == "UnityPlayer.so") {
         return Some(EngineInfo::new(Engine::Unity));
     }
 
     // Unreal: <Project>/Binaries/(Win64|Linux|Win32) or <Project>-<Platform>-Shipping.exe.
     for d in root.dirs.iter().filter(|d| d.as_str() != "Engine") {
         let bin = install.join(d).join("Binaries");
-        if ["Win64", "Linux", "Win32", "WinGDK"]
-            .iter()
-            .any(|p| bin.join(p).is_dir())
-        {
+        if ["Win64", "Linux", "Win32", "WinGDK"].iter().any(|p| bin.join(p).is_dir()) {
             let mut info = EngineInfo::new(Engine::Unreal);
             info.project = Some(d.clone());
             return Some(info);
@@ -119,20 +103,14 @@ pub fn detect_engine(install: &Path) -> Option<EngineInfo> {
     };
     if let Some(exe) = find_file(install, 3, &shipping) {
         let mut info = EngineInfo::new(Engine::Unreal);
-        info.project = exe
-            .split('-')
-            .next()
-            .map(str::to_string)
-            .filter(|s| !s.is_empty());
+        info.project = exe.split('-').next().map(str::to_string).filter(|s| !s.is_empty());
         return Some(info);
     }
 
     // Godot: exported `.pck` next to the executable.
     if let Some(pck) = root.files.iter().find(|f| has_ext(f, "pck")) {
         let mut info = EngineInfo::new(Engine::Godot);
-        info.project = Path::new(pck)
-            .file_stem()
-            .map(|s| s.to_string_lossy().into_owned());
+        info.project = Path::new(pck).file_stem().map(|s| s.to_string_lossy().into_owned());
         return Some(info);
     }
 
@@ -144,12 +122,7 @@ pub fn detect_engine(install: &Path) -> Option<EngineInfo> {
     }
 
     // RPG Maker MV / MZ.
-    let rpg_markers = [
-        "www/js/rpg_core.js",
-        "www/js/rpg_managers.js",
-        "js/rmmz_core.js",
-        "js/rpg_core.js",
-    ];
+    let rpg_markers = ["www/js/rpg_core.js", "www/js/rpg_managers.js", "js/rmmz_core.js", "js/rpg_core.js"];
     if rpg_markers.iter().any(|m| install.join(m).is_file())
         || has_rpg_saves(&install.join("www").join("save"))
         || has_rpg_saves(&install.join("save"))
@@ -158,10 +131,7 @@ pub fn detect_engine(install: &Path) -> Option<EngineInfo> {
     }
 
     // GameMaker: data.win (Windows) / game.unx (Linux).
-    if root
-        .files
-        .iter()
-        .any(|f| f == "data.win" || f == "game.unx")
+    if root.files.iter().any(|f| f == "data.win" || f == "game.unx")
         || install.join("assets").join("game.unx").is_file()
     {
         return Some(EngineInfo::new(Engine::GameMaker));
@@ -169,30 +139,24 @@ pub fn detect_engine(install: &Path) -> Option<EngineInfo> {
 
     // Source: VPK archives in the root or a mod directory.
     if root.files.iter().any(|f| has_ext(f, "vpk"))
-        || root.dirs.iter().any(|d| {
-            list(&install.join(d))
-                .files
-                .iter()
-                .any(|f| has_ext(f, "vpk"))
-        })
+        || root.dirs.iter().any(|d| list(&install.join(d)).files.iter().any(|f| has_ext(f, "vpk")))
     {
         return Some(EngineInfo::new(Engine::Source));
     }
 
     // XNA / FNA / MonoGame.
-    if root.files.iter().any(|f| {
-        f == "MonoGame.Framework.dll" || f == "FNA.dll" || f.starts_with("Microsoft.Xna.Framework")
-    }) {
+    if root
+        .files
+        .iter()
+        .any(|f| f == "MonoGame.Framework.dll" || f == "FNA.dll" || f.starts_with("Microsoft.Xna.Framework"))
+    {
         return Some(EngineInfo::new(Engine::Other));
     }
     None
 }
 
 fn has_rpg_saves(dir: &Path) -> bool {
-    list(dir)
-        .files
-        .iter()
-        .any(|f| has_ext(f, "rpgsave") || has_ext(f, "rmmzsave"))
+    list(dir).files.iter().any(|f| has_ext(f, "rpgsave") || has_ext(f, "rmmzsave"))
 }
 
 /// Reads `config.save_directory = "..."` from the Ren'Py scripts of a game directory.
@@ -225,46 +189,18 @@ pub(crate) fn heuristic_locations(
     match info.engine {
         Engine::Unity => {
             if let (Some(company), Some(product)) = (&info.company, &info.product) {
-                let c = ctx
-                    .clone()
-                    .with_extra("company", company)
-                    .with_extra("product", product);
-                specs.push((
-                    c.clone(),
-                    "<winLocalAppDataLow>/<company>/<product>",
-                    PathOs::Windows,
-                    all(),
-                ));
-                specs.push((
-                    c,
-                    "<xdgConfig>/unity3d/<company>/<product>",
-                    PathOs::Linux,
-                    all(),
-                ));
+                let c = ctx.clone().with_extra("company", company).with_extra("product", product);
+                specs.push((c.clone(), "<winLocalAppDataLow>/<company>/<product>", PathOs::Windows, all()));
+                specs.push((c, "<xdgConfig>/unity3d/<company>/<product>", PathOs::Linux, all()));
             }
         }
         Engine::Unreal => {
             if let Some(project) = &info.project {
                 let c = ctx.clone().with_extra("project", project);
                 let sav = vec!["*.sav".to_string()];
-                specs.push((
-                    c.clone(),
-                    "<winLocalAppData>/<project>/Saved/SaveGames",
-                    PathOs::Windows,
-                    sav.clone(),
-                ));
-                specs.push((
-                    c.clone(),
-                    "<base>/<project>/Saved/SaveGames",
-                    PathOs::Any,
-                    sav.clone(),
-                ));
-                specs.push((
-                    c,
-                    "<xdgConfig>/Epic/<project>/Saved/SaveGames",
-                    PathOs::Linux,
-                    sav,
-                ));
+                specs.push((c.clone(), "<winLocalAppData>/<project>/Saved/SaveGames", PathOs::Windows, sav.clone()));
+                specs.push((c.clone(), "<base>/<project>/Saved/SaveGames", PathOs::Any, sav.clone()));
+                specs.push((c, "<xdgConfig>/Epic/<project>/Saved/SaveGames", PathOs::Linux, sav));
             }
         }
         Engine::Godot => {
@@ -274,18 +210,8 @@ pub(crate) fn heuristic_locations(
             }
             for name in names {
                 let c = ctx.clone().with_extra("project", name);
-                specs.push((
-                    c.clone(),
-                    "<winAppData>/Godot/app_userdata/<project>",
-                    PathOs::Windows,
-                    all(),
-                ));
-                specs.push((
-                    c,
-                    "<xdgData>/godot/app_userdata/<project>",
-                    PathOs::Linux,
-                    all(),
-                ));
+                specs.push((c.clone(), "<winAppData>/Godot/app_userdata/<project>", PathOs::Windows, all()));
+                specs.push((c, "<xdgData>/godot/app_userdata/<project>", PathOs::Linux, all()));
             }
         }
         Engine::RenPy => {
@@ -293,33 +219,18 @@ pub(crate) fn heuristic_locations(
             match &info.project {
                 Some(dir) => {
                     let c = ctx.clone().with_extra("project", dir);
-                    specs.push((
-                        c.clone(),
-                        "<winAppData>/RenPy/<project>",
-                        PathOs::Windows,
-                        pats.clone(),
-                    ));
+                    specs.push((c.clone(), "<winAppData>/RenPy/<project>", PathOs::Windows, pats.clone()));
                     specs.push((c, "<home>/.renpy/<project>", PathOs::Linux, pats.clone()));
                 }
                 None => {
-                    specs.push((
-                        ctx.clone(),
-                        "<winAppData>/RenPy/*",
-                        PathOs::Windows,
-                        pats.clone(),
-                    ));
+                    specs.push((ctx.clone(), "<winAppData>/RenPy/*", PathOs::Windows, pats.clone()));
                     specs.push((ctx.clone(), "<home>/.renpy/*", PathOs::Linux, pats.clone()));
                 }
             }
             specs.push((ctx.clone(), "<base>/game/saves", PathOs::Any, pats));
         }
         Engine::GameMaker => {
-            specs.push((
-                ctx.clone(),
-                "<winLocalAppData>/<game>",
-                PathOs::Windows,
-                all(),
-            ));
+            specs.push((ctx.clone(), "<winLocalAppData>/<game>", PathOs::Windows, all()));
             specs.push((ctx.clone(), "<xdgConfig>/<game>", PathOs::Linux, all()));
         }
         Engine::RpgMaker => {
@@ -328,12 +239,7 @@ pub(crate) fn heuristic_locations(
             specs.push((ctx.clone(), "<base>/save", PathOs::Any, pats));
         }
         Engine::Source => {
-            specs.push((
-                ctx.clone(),
-                "<base>/*/save",
-                PathOs::Any,
-                vec!["*.sav".to_string()],
-            ));
+            specs.push((ctx.clone(), "<base>/*/save", PathOs::Any, vec!["*.sav".to_string()]));
         }
         Engine::Other => {}
     }
@@ -347,13 +253,7 @@ pub(crate) fn heuristic_locations(
             if out.iter().any(|l| l.root == dir) {
                 continue;
             }
-            out.push(make_location(
-                dir,
-                patterns.clone(),
-                LocationSource::EngineHeuristic {
-                    engine: info.engine,
-                },
-            )?);
+            out.push(make_location(dir, patterns.clone(), LocationSource::EngineHeuristic { engine: info.engine })?);
         }
     }
     Ok(out)
@@ -392,40 +292,24 @@ mod tests {
         fs::create_dir_all(ue.join("Engine/Binaries/Win64")).unwrap();
         fs::create_dir_all(ue.join("Proj/Binaries/Linux")).unwrap();
         let i = detect_engine(&ue).unwrap();
-        assert_eq!(
-            (i.engine, i.project.as_deref()),
-            (Engine::Unreal, Some("Proj"))
-        );
+        assert_eq!((i.engine, i.project.as_deref()), (Engine::Unreal, Some("Proj")));
 
         let ue2 = mk("ue2");
         touch(&ue2.join("bin/Other-Win64-Shipping.exe"));
         let i = detect_engine(&ue2).unwrap();
-        assert_eq!(
-            (i.engine, i.project.as_deref()),
-            (Engine::Unreal, Some("Other"))
-        );
+        assert_eq!((i.engine, i.project.as_deref()), (Engine::Unreal, Some("Other")));
 
         let godot = mk("godot");
         touch(&godot.join("MyGodot.pck"));
         let i = detect_engine(&godot).unwrap();
-        assert_eq!(
-            (i.engine, i.project.as_deref()),
-            (Engine::Godot, Some("MyGodot"))
-        );
+        assert_eq!((i.engine, i.project.as_deref()), (Engine::Godot, Some("MyGodot")));
 
         let renpy = mk("renpy");
         fs::create_dir_all(renpy.join("renpy")).unwrap();
         fs::create_dir_all(renpy.join("game")).unwrap();
-        fs::write(
-            renpy.join("game/options.rpy"),
-            "define config.save_directory = \"VN-1234\"\n",
-        )
-        .unwrap();
+        fs::write(renpy.join("game/options.rpy"), "define config.save_directory = \"VN-1234\"\n").unwrap();
         let i = detect_engine(&renpy).unwrap();
-        assert_eq!(
-            (i.engine, i.project.as_deref()),
-            (Engine::RenPy, Some("VN-1234"))
-        );
+        assert_eq!((i.engine, i.project.as_deref()), (Engine::RenPy, Some("VN-1234")));
 
         let rpg = mk("rpg");
         touch(&rpg.join("www/save/file1.rpgsave"));

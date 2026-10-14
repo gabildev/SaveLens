@@ -257,12 +257,7 @@ impl fmt::Display for LayerDescriptor {
         match self {
             LayerDescriptor::Crypto { scheme, profile } => write!(f, "Crypto: {} [{profile}]", scheme.name()),
             LayerDescriptor::Checksum { rule } => write!(f, "Checksum Auto-Matched: {}", rule.algorithm.name()),
-            LayerDescriptor::Compression {
-                algorithm,
-                size_prefix,
-                level,
-                exact,
-            } => {
+            LayerDescriptor::Compression { algorithm, size_prefix, level, exact } => {
                 write!(f, "Compression: {}", algorithm.name())?;
                 if let Some(p) = size_prefix {
                     write!(f, " (+{:?} size prefix)", p)?;
@@ -289,11 +284,7 @@ pub enum RoundTripStatus {
     /// Bit-for-bit identical.
     Lossless,
     /// Structural serializer differs from the original at `first_diff_offset`.
-    Lossy {
-        first_diff_offset: usize,
-        original_len: usize,
-        reencoded_len: usize,
-    },
+    Lossy { first_diff_offset: usize, original_len: usize, reencoded_len: usize },
     /// Re-encoding failed with an error.
     Failed(String),
 }
@@ -404,11 +395,7 @@ mod tests {
         assert_eq!(e.allowed_edit_mode(), EditMode::BackupRestoreOnly);
         e.round_trip = Some(RoundTripStatus::Lossless);
         assert_eq!(e.allowed_edit_mode(), EditMode::Structural);
-        e.round_trip = Some(RoundTripStatus::Lossy {
-            first_diff_offset: 3,
-            original_len: 10,
-            reencoded_len: 10,
-        });
+        e.round_trip = Some(RoundTripStatus::Lossy { first_diff_offset: 3, original_len: 10, reencoded_len: 10 });
         assert_eq!(e.allowed_edit_mode(), EditMode::RawInPlace);
     }
 
@@ -440,10 +427,7 @@ mod tests {
     #[test]
     fn envelope_serde_roundtrip() {
         let mut e = FormatEnvelope::plain("raw");
-        e.layers.push(LayerDescriptor::Crypto {
-            scheme: CryptoScheme::Es3,
-            profile: "es3-default".into(),
-        });
+        e.layers.push(LayerDescriptor::Crypto { scheme: CryptoScheme::Es3, profile: "es3-default".into() });
         let s = serde_json::to_string(&e).unwrap();
         let back: FormatEnvelope = serde_json::from_str(&s).unwrap();
         assert_eq!(back, e);

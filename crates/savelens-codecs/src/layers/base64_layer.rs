@@ -61,9 +61,7 @@ pub fn parse(data: &[u8]) -> Option<(Base64Layout, Vec<u8>)> {
     }
     let line_ending: &'static str = if body.windows(2).any(|w| w == b"\r\n") { "\r\n" } else { "\n" };
     let lines: Vec<&[u8]> = if body.contains(&b'\n') {
-        body.split(|&b| b == b'\n')
-            .map(|l| l.strip_suffix(b"\r").unwrap_or(l))
-            .collect()
+        body.split(|&b| b == b'\n').map(|l| l.strip_suffix(b"\r").unwrap_or(l)).collect()
     } else {
         vec![body]
     };
@@ -82,9 +80,9 @@ pub fn parse(data: &[u8]) -> Option<(Base64Layout, Vec<u8>)> {
     if url && std_chars {
         return None;
     }
-    let valid = joined
-        .iter()
-        .all(|&b| b.is_ascii_alphanumeric() || b == b'=' || if url { b == b'-' || b == b'_' } else { b == b'+' || b == b'/' });
+    let valid = joined.iter().all(|&b| {
+        b.is_ascii_alphanumeric() || b == b'=' || if url { b == b'-' || b == b'_' } else { b == b'+' || b == b'/' }
+    });
     if !valid {
         return None;
     }
@@ -127,23 +125,13 @@ impl Base64Layer {
     pub fn detect(data: &[u8]) -> Option<(Base64Layer, Vec<u8>)> {
         let (layout, decoded) = parse(data)?;
         let exact = layout.encode(&decoded) == data;
-        Some((
-            Base64Layer {
-                layout,
-                exact,
-                identity: Identity::new(data, &decoded),
-            },
-            decoded,
-        ))
+        Some((Base64Layer { layout, exact, identity: Identity::new(data, &decoded) }, decoded))
     }
 }
 
 impl Layer for Base64Layer {
     fn descriptor(&self) -> LayerDescriptor {
-        LayerDescriptor::Base64 {
-            variant: self.layout.variant,
-            line_width: self.layout.line_width,
-        }
+        LayerDescriptor::Base64 { variant: self.layout.variant, line_width: self.layout.line_width }
     }
 
     fn wrap(&self, inner: &[u8]) -> CodecResult<Vec<u8>> {
@@ -176,12 +164,9 @@ mod tests {
     #[test]
     fn single_line_variants() {
         let data: Vec<u8> = (0..100u8).collect();
-        for v in [
-            Base64Variant::Standard,
-            Base64Variant::StandardNoPad,
-            Base64Variant::UrlSafe,
-            Base64Variant::UrlSafeNoPad,
-        ] {
+        for v in
+            [Base64Variant::Standard, Base64Variant::StandardNoPad, Base64Variant::UrlSafe, Base64Variant::UrlSafeNoPad]
+        {
             let text = engine(v).encode(&data).into_bytes();
             let (layer, inner) = Base64Layer::detect(&text).unwrap();
             assert_eq!(inner, data);
