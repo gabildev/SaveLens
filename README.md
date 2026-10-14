@@ -7,7 +7,7 @@
 Linux (native + Steam Proton/Wine) · Windows · 100% Rust · No Git underneath · Zero-corruption by design
 
 [![CI](https://github.com/gabildev/savelens/actions/workflows/ci.yml/badge.svg)](https://github.com/gabildev/savelens/actions/workflows/ci.yml)
-![MSRV 1.85](https://img.shields.io/badge/rust-1.85%2B-orange)
+![MSRV 1.88](https://img.shields.io/badge/rust-1.88%2B-orange)
 ![License](https://img.shields.io/badge/license-MIT%20%2F%20Apache--2.0-blue)
 
 </div>
