@@ -67,7 +67,7 @@ impl CodecRegistry {
             .map(|c| (c.detect(bytes, ctx), c.clone()))
             .filter(|(conf, _)| *conf > 0)
             .collect();
-        v.sort_by(|a, b| b.0.cmp(&a.0));
+        v.sort_by_key(|e| std::cmp::Reverse(e.0));
         v
     }
 

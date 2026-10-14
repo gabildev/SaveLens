@@ -1116,13 +1116,7 @@ impl StructuralCodec for JsonCodec {
                 Ok(_) => 40,
                 Err(_) => 0,
             },
-            Some(_) if ext_json => {
-                if JsonDoc::parse(bytes).map(|d| d.garbage.is_empty()).unwrap_or(false) {
-                    40
-                } else {
-                    0
-                }
-            }
+            Some(_) if ext_json && JsonDoc::parse(bytes).map(|d| d.garbage.is_empty()).unwrap_or(false) => 40,
             _ => 0,
         }
     }

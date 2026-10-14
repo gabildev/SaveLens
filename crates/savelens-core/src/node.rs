@@ -150,7 +150,7 @@ impl ScalarValue {
     }
 
     /// `self + d`.
-    pub fn add(self, d: ScalarValue) -> ScalarValue {
+    pub fn plus(self, d: ScalarValue) -> ScalarValue {
         match (self, d) {
             (ScalarValue::Int(a), ScalarValue::Int(b)) => ScalarValue::Int(a.wrapping_add(b)),
             (a, b) => ScalarValue::Float(a.as_f64() + b.as_f64()),

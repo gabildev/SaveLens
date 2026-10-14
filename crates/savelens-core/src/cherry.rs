@@ -292,12 +292,12 @@ mod tests {
         let src = Node::map_from([("New", Node::I32(1)), ("A", Node::I32(1))]);
         let mut dst = Node::map_from([("A", Node::I32(1))]);
         let p = NodePath::parse("New").unwrap();
-        assert!(cherry_pick(&mut dst, &src, &[p.clone()], &CherryPickOptions::default()).is_err());
+        assert!(cherry_pick(&mut dst, &src, std::slice::from_ref(&p), &CherryPickOptions::default()).is_err());
         let opts = CherryPickOptions {
             create_missing: true,
             ..CherryPickOptions::default()
         };
-        cherry_pick(&mut dst, &src, &[p.clone()], &opts).unwrap();
+        cherry_pick(&mut dst, &src, std::slice::from_ref(&p), &opts).unwrap();
         assert_eq!(dst.get(&p), Some(&Node::I32(1)));
         let rep = cherry_pick(&mut dst, &src, &[NodePath::parse("A").unwrap()], &opts).unwrap();
         assert_eq!(rep.unchanged.len(), 1);

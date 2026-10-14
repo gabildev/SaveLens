@@ -126,8 +126,8 @@ proptest! {
         let leaf = m.get(&path).unwrap().clone();
         let cur = leaf.as_scalar().unwrap();
         // Try +delta, fall back to -delta when out of range.
-        let new = leaf.with_scalar(cur.add(ScalarValue::Int(delta as i128)), &path)
-            .or_else(|_| leaf.with_scalar(cur.add(ScalarValue::Int(-(delta as i128))), &path));
+        let new = leaf.with_scalar(cur.plus(ScalarValue::Int(delta as i128)), &path)
+            .or_else(|_| leaf.with_scalar(cur.plus(ScalarValue::Int(-(delta as i128))), &path));
         prop_assume!(new.is_ok());
         m.set(&path, new.unwrap(), false).unwrap();
         let d = diff(&t, &m);
@@ -270,7 +270,7 @@ proptest! {
         dest.set(&path, perturbed, false).unwrap();
         let before = dest.clone();
         let opts = CherryPickOptions::default();
-        let rep = cherry_pick(&mut dest, &a, &[path.clone()], &opts).unwrap();
+        let rep = cherry_pick(&mut dest, &a, std::slice::from_ref(&path), &opts).unwrap();
         prop_assert!(bit_equal(dest.get(&path).unwrap(), &src_sub));
         // Every change lies under the picked path.
         for c in &rep.diff.changes {

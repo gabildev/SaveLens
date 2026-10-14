@@ -42,6 +42,18 @@ pub enum WriteMethod {
     Deleted,
 }
 
+/// One row of the mutation journal.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MutationSummary {
+    pub id: i64,
+    pub path: PathBuf,
+    pub reason: String,
+    pub created_at: i64,
+    pub restored: bool,
+    pub is_panic: bool,
+    pub safety_tag: String,
+}
+
 /// Which mutation a panic restore reverts.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PanicScope {
@@ -434,22 +446,22 @@ impl Store {
     }
 
     /// Recent mutations, newest first.
-    pub fn mutations(&self, limit: usize) -> CasResult<Vec<(i64, PathBuf, String, i64, bool, bool, String)>> {
+    pub fn mutations(&self, limit: usize) -> CasResult<Vec<MutationSummary>> {
         let g = self.inner.lock();
         let mut stmt = g.conn.prepare(
             "SELECT m.id, m.abs_path, m.reason, m.created_at, m.restored, m.is_panic, s.tag FROM mutations m JOIN safety_backups s ON s.id = m.safety_id ORDER BY m.id DESC LIMIT ?1",
         )?;
         let rows = stmt
             .query_map(params![limit as i64], |r| {
-                Ok((
-                    r.get::<_, i64>(0)?,
-                    PathBuf::from(r.get::<_, String>(1)?),
-                    r.get::<_, String>(2)?,
-                    r.get::<_, i64>(3)?,
-                    r.get::<_, i64>(4)? != 0,
-                    r.get::<_, i64>(5)? != 0,
-                    r.get::<_, String>(6)?,
-                ))
+                Ok(MutationSummary {
+                    id: r.get(0)?,
+                    path: PathBuf::from(r.get::<_, String>(1)?),
+                    reason: r.get(2)?,
+                    created_at: r.get(3)?,
+                    restored: r.get::<_, i64>(4)? != 0,
+                    is_panic: r.get::<_, i64>(5)? != 0,
+                    safety_tag: r.get(6)?,
+                })
             })?
             .collect::<Result<Vec<_>, _>>()?;
         Ok(rows)

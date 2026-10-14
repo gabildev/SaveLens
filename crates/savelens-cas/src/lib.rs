@@ -18,5 +18,5 @@ pub mod store;
 
 pub use error::{CasError, CasResult};
 pub use model::*;
-pub use safety::{PanicReport, PanicScope, WriteMethod};
+pub use safety::{MutationSummary, PanicReport, PanicScope, WriteMethod};
 pub use store::{default_data_dir, Store};

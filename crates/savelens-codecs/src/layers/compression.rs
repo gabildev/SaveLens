@@ -33,7 +33,7 @@ fn comp_err(algo: CompressionAlgorithm, reason: impl Into<String>) -> CodecError
 pub fn inflate(data: &[u8], zlib_header: bool) -> CodecResult<(Vec<u8>, usize)> {
     let algo = if zlib_header { CompressionAlgorithm::Zlib } else { CompressionAlgorithm::Deflate };
     let mut d = Decompress::new(zlib_header);
-    let mut out: Vec<u8> = Vec::with_capacity((data.len() * 4).min(MAX_DECOMPRESSED).max(64));
+    let mut out: Vec<u8> = Vec::with_capacity((data.len() * 4).clamp(64, MAX_DECOMPRESSED));
     loop {
         let in_before = d.total_in() as usize;
         let out_before = d.total_out();

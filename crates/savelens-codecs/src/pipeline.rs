@@ -155,7 +155,7 @@ impl EnvelopePipeline {
             let depth = layers.len();
             // A payload that a structural codec parses with high confidence
             // is never peeled further (avoids decoding e.g. base64 *values*).
-            let structured = self.registry.best_structured_confidence(&cur, ctx) >= 80;
+            let structured = self.registry.best_structured_confidence(&cur, ctx) >= 70;
             if self.options.hunt_checksums && !structured {
                 if let Some((l, inner)) = ChecksumLayer::detect(&cur) {
                     layers.push(Box::new(l));
