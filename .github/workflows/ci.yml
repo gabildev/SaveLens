@@ -47,6 +47,20 @@ jobs:
       - name: CLI without UI features
         run: cargo build -p savelens-cli --no-default-features --locked
 
+  real-saves:
+    name: real game save corpus
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Fetch the corpus (pinned upstream commits)
+        run: scripts/fetch-real-saves.sh
+      - name: Real-save round trip + edit tests
+        env:
+          SAVELENS_REQUIRE_REAL_SAVES: "1"
+        run: cargo test -p savelens-codecs --test real_saves --locked -- --nocapture
+
   msrv:
     name: MSRV 1.88
     runs-on: ubuntu-latest

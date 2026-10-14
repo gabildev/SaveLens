@@ -7,6 +7,8 @@ pub mod base64_layer;
 pub mod checksum;
 pub mod compression;
 pub mod crypto;
+pub mod lzstring;
+pub mod plz;
 
 use std::fmt;
 

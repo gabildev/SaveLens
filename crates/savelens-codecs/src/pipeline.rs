@@ -21,6 +21,8 @@ use crate::layers::checksum::ChecksumLayer;
 use crate::layers::compression::CompressionLayer;
 use crate::layers::crypto::keys::KeyDatabase;
 use crate::layers::crypto::CryptoLayer;
+use crate::layers::lzstring::LzStringLayer;
+use crate::layers::plz::PlzLayer;
 use crate::layers::Layer;
 use crate::registry::CodecRegistry;
 
@@ -102,7 +104,30 @@ impl EnvelopePipeline {
                 return self.recognized(&inner, ctx, depth + 1);
             }
         }
-        false
+        if PlzLayer::detect(data).is_some() {
+            return true;
+        }
+        self.try_specific_crypto(data, ctx, depth + 1).is_some()
+    }
+
+    /// Profiles selected by AppID or file name only (no generic / brute-force
+    /// attempts): cheap enough to be used while probing speculative layers.
+    fn try_specific_crypto(&self, data: &[u8], ctx: &DetectContext, depth: usize) -> Option<(Box<dyn Layer>, Vec<u8>)> {
+        if depth > self.options.max_layers {
+            return None;
+        }
+        for profile in self.keys.candidates(ctx) {
+            let specific = ctx.app_id.is_some_and(|id| profile.app_ids.contains(&id))
+                || ctx.file_name.as_deref().is_some_and(|n| profile.matches_file(n));
+            if !specific {
+                continue;
+            }
+            let Ok((layer, inner)) = CryptoLayer::open(profile, data) else { continue };
+            if self.recognized(&inner, ctx, depth + 1) || entropy::shannon(&inner) < 6.0 {
+                return Some((Box::new(layer), inner));
+            }
+        }
+        None
     }
 
     fn quick_text_like(prefix: &[u8]) -> bool {
@@ -160,10 +185,22 @@ impl EnvelopePipeline {
                 cur = inner;
                 continue;
             }
+            if let Some((l, inner)) = PlzLayer::detect(&cur) {
+                layers.push(Box::new(l));
+                cur = inner;
+                continue;
+            }
             if structured {
                 break;
             }
             if let Some((l, inner)) = Base64Layer::detect(&cur) {
+                if self.recognized(&inner, ctx, depth + 1) {
+                    layers.push(Box::new(l));
+                    cur = inner;
+                    continue;
+                }
+            }
+            if let Some((l, inner)) = LzStringLayer::detect(&cur) {
                 if self.recognized(&inner, ctx, depth + 1) {
                     layers.push(Box::new(l));
                     cur = inner;

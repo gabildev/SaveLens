@@ -245,6 +245,13 @@ pub enum LayerDescriptor {
         /// Line wrap width used by the original text (0 = none).
         line_width: usize,
     },
+    /// A game-specific wrapper (e.g. Palworld `PlZ`, LZString text).
+    Wrapper {
+        name: String,
+        detail: String,
+        /// True when re-encoding modified data is bit-exact with the game's encoder.
+        exact: bool,
+    },
     /// Bytes preceding/following the payload that are kept verbatim.
     Framing {
         prefix_len: usize,
@@ -271,6 +278,13 @@ impl fmt::Display for LayerDescriptor {
                 Ok(())
             }
             LayerDescriptor::Base64 { variant, .. } => write!(f, "Base64 ({variant:?})"),
+            LayerDescriptor::Wrapper { name, detail, exact } => {
+                write!(f, "Wrapper: {name} ({detail})")?;
+                if !exact {
+                    write!(f, " [re-encode not bit-exact]")?;
+                }
+                Ok(())
+            }
             LayerDescriptor::Framing { prefix_len, suffix_len } => {
                 write!(f, "Framing: {prefix_len} prefix / {suffix_len} suffix bytes")
             }

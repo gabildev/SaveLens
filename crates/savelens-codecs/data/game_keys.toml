@@ -16,6 +16,39 @@
 # profile can never corrupt anything.
 
 [[profile]]
+name = "slay-the-spire"
+description = "Slay the Spire autosaves: Base64 of the JSON save XOR-ed with the repeating key \"key\"."
+scheme = "xor"
+key_text = "key"
+app_ids = [646570]
+file_patterns = ["*.autosave", "*.autosaveBETA"]
+
+[[profile]]
+name = "repo"
+description = "R.E.P.O. (Unity, Easy Save 3), password as published by the community save editors."
+scheme = "es3"
+password = "Why would you want to cheat?... :o It's no fun. :') :'D"
+app_ids = [3241660]
+file_patterns = ["REPO_SAVE_*.es3"]
+
+[[profile]]
+name = "strike-force-heroes"
+description = "Strike Force Heroes (Unity, Easy Save 3)."
+scheme = "es3"
+password = "ADFT4rq4rFQR"
+file_patterns = ["*.sfh"]
+
+[[profile]]
+name = "terraria-player"
+description = "Terraria player files (.plr): AES-128-CBC, key and IV are the UTF-16LE string \"h3y_gUyZ\"."
+scheme = "aes-128-cbc"
+key_hex = "6800330079005f006700550079005a00"
+iv = "fixed"
+iv_hex = "6800330079005f006700550079005a00"
+app_ids = [105600]
+file_patterns = ["*.plr"]
+
+[[profile]]
 name = "es3-default"
 description = "Unity Easy Save 3 with its stock password (ES3Settings.encryptionPassword default)."
 scheme = "es3"

@@ -85,6 +85,9 @@ struct Item {
 struct Member {
     ws_before_key: String,
     key: JStr,
+    /// False for bare keys (`{215: …}`), a dialect written by Unity Easy Save 3
+    /// for dictionaries with non-string keys.
+    key_quoted: bool,
     ws_before_colon: String,
     ws_after_colon: String,
     value: JVal,
@@ -104,6 +107,8 @@ enum JVal {
 /// A parsed JSON document.
 #[derive(Debug, Clone)]
 pub struct JsonDoc {
+    /// Unquoted object keys found (non-standard dialect).
+    bare_keys: usize,
     bom: bool,
     lead: String,
     root: JVal,
@@ -120,6 +125,8 @@ struct Parser<'a> {
     src: &'a [u8],
     pos: usize,
     depth: usize,
+    /// Number of unquoted object keys seen (Easy Save 3 dialect).
+    bare_keys: usize,
 }
 
 impl<'a> Parser<'a> {
@@ -284,16 +291,34 @@ impl<'a> Parser<'a> {
         }
         let mut ws_before_key = first_ws;
         loop {
-            if self.peek() != Some(b'"') {
-                return Err(self.err("expected object key"));
-            }
-            let key = self.string()?;
+            let (key, key_quoted) = match self.peek() {
+                Some(b'"') => (self.string()?, true),
+                Some(c) if c.is_ascii_alphanumeric() || matches!(c, b'_' | b'-' | b'+' | b'.' | b'$') => {
+                    let start = self.pos;
+                    while matches!(self.peek(), Some(c) if c.is_ascii_alphanumeric() || matches!(c, b'_' | b'-' | b'+' | b'.' | b'$'))
+                    {
+                        self.pos += 1;
+                    }
+                    let raw = String::from_utf8_lossy(&self.src[start..self.pos]).into_owned();
+                    self.bare_keys += 1;
+                    (JStr { raw: raw.clone(), value: raw, nested: None }, false)
+                }
+                _ => return Err(self.err("expected object key")),
+            };
             let ws_before_colon = self.ws();
             self.expect(b':')?;
             let ws_after_colon = self.ws();
             let value = self.value()?;
             let ws_after_value = self.ws();
-            members.push(Member { ws_before_key, key, ws_before_colon, ws_after_colon, value, ws_after_value });
+            members.push(Member {
+                ws_before_key,
+                key,
+                key_quoted,
+                ws_before_colon,
+                ws_after_colon,
+                value,
+                ws_after_value,
+            });
             match self.peek() {
                 Some(b',') => {
                     self.pos += 1;
@@ -475,7 +500,7 @@ impl JsonDoc {
             Some(rest) => (true, rest),
             None => (false, src),
         };
-        let mut p = Parser { src: body, pos: 0, depth: 0 };
+        let mut p = Parser { src: body, pos: 0, depth: 0, bare_keys: 0 };
         let lead = p.ws();
         let mut root = p.value()?;
         let trail = p.ws();
@@ -491,7 +516,7 @@ impl JsonDoc {
             colon_ws: scan.colon.unwrap_or_default(),
         };
         expand_nested(&mut root, &style, 0);
-        Ok(JsonDoc { bom, lead, root, trail, garbage, style })
+        Ok(JsonDoc { bare_keys: p.bare_keys, bom, lead, root, trail, garbage, style })
     }
 
     /// Detected style.
@@ -672,9 +697,13 @@ fn write_val(v: &JVal, style: &JsonStyle, out: &mut String) -> CodecResult<()> {
                     out.push(',');
                 }
                 out.push_str(&m.ws_before_key);
-                out.push('"');
+                if m.key_quoted {
+                    out.push('"');
+                }
                 out.push_str(&m.key.raw);
-                out.push('"');
+                if m.key_quoted {
+                    out.push('"');
+                }
                 out.push_str(&m.ws_before_colon);
                 out.push(':');
                 out.push_str(&m.ws_after_colon);
@@ -815,6 +844,7 @@ impl Ctx<'_> {
                     out.push(Member {
                         ws_before_key: inner.clone(),
                         key: JStr { raw: escape(k, self.style), value: k.clone(), nested: None },
+                        key_quoted: true,
                         ws_before_colon: String::new(),
                         ws_after_colon: self.style.colon_ws.clone(),
                         value: self.render(v, level + 1, &path.key(k.clone()))?,
@@ -882,6 +912,7 @@ impl Ctx<'_> {
                             new_members.push(Member {
                                 ws_before_key: wb,
                                 key: JStr { raw: escape(k, self.style), value: k.clone(), nested: None },
+                                key_quoted: true,
                                 ws_before_colon: wbc,
                                 ws_after_colon: wac,
                                 value,
@@ -1007,6 +1038,9 @@ impl Document for JsonDocument {
 
     fn notes(&self) -> Vec<String> {
         let mut n = Vec::new();
+        if self.doc.bare_keys > 0 {
+            n.push(format!("{} unquoted object key(s) (Easy Save 3 JSON dialect) kept verbatim", self.doc.bare_keys));
+        }
         if self.doc.bom {
             n.push("UTF-8 BOM".into());
         }
@@ -1059,7 +1093,8 @@ impl StructuralCodec for JsonCodec {
         let ext_json = matches!(ctx.extension().as_deref(), Some("json"));
         match first {
             Some(b'{') | Some(b'[') => match JsonDoc::parse(bytes) {
-                Ok(doc) if doc.garbage.is_empty() => 90,
+                Ok(doc) if doc.garbage.is_empty() && doc.bare_keys == 0 => 90,
+                Ok(doc) if doc.garbage.is_empty() => 80,
                 Ok(doc) if doc.garbage.iter().all(|&b| b == 0) => 85,
                 Ok(_) => 40,
                 Err(_) => 0,
@@ -1093,6 +1128,22 @@ mod tests {
         rt("[ 1 , -0 , 0.0 , 1E9 , \"\\ud83d\\ude00\" ]");
         rt("{\"dup\":1,\"dup\":2}");
         rt("\"just a string\"");
+    }
+
+    #[test]
+    fn easy_save_3_bare_dictionary_keys() {
+        let src = "{\r\n\t\"Items\" : {\"__type\" : \"Dict\",\"value\" : {215:{\"Value\" : 3977.1958},-3:{\"Value\" : 1}}}\r\n}";
+        let mut doc = JsonDocument::parse(src.as_bytes()).unwrap();
+        assert_eq!(doc.encode().unwrap(), src.as_bytes());
+        assert!(doc.notes().iter().any(|n| n.contains("unquoted")));
+        let mut ast = doc.to_ast();
+        let p = NodePath::parse("Items.value[\"215\"].Value").unwrap();
+        assert_eq!(ast.get(&p), Some(&Node::F64(3977.1958)));
+        ast.set(&p, Node::F64(99999.5), false).unwrap();
+        doc.apply_ast(&ast).unwrap();
+        let out = String::from_utf8(doc.encode().unwrap()).unwrap();
+        assert_eq!(out, src.replace("3977.1958", "99999.5"));
+        assert_eq!(JsonCodec.detect(src.as_bytes(), &DetectContext::default()), 80);
     }
 
     #[test]

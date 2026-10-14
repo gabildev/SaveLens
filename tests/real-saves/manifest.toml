@@ -1,0 +1,271 @@
+# Real-game save corpus expectations, checked by
+# crates/savelens-codecs/tests/real_saves.rs. Fetch the files with
+# scripts/fetch-real-saves.sh (see README.md in this directory for sources).
+#
+# Fields:
+#   file      path below tests/real-saves/corpus
+#   game      human readable game name
+#   app_id    Steam AppID passed to the DetectContext (optional)
+#   codec     expected structural codec id
+#   layers    substrings that must appear in the envelope layers, in order
+#   lossless  expected Safe Edit Gate result (structural round trip bit-exact)
+#   edit      optional { path = "...", value = ... }: structural edit that must
+#             survive encode_verified + a fresh re-open
+
+[[save]]
+file = "unreal/deep-rock-galactic.sav"
+game = "Deep Rock Galactic"
+codec = "gvas"
+lossless = true
+edit = { path = "Credits", value = 9999999 }
+
+[[save]]
+file = "unreal/drg-proppack.sav"
+game = "Deep Rock Galactic (Space Rig decorator)"
+codec = "gvas"
+lossless = true
+
+[[save]]
+file = "unreal/Delegate.sav"
+game = "Unreal Engine (gvas test corpus)"
+codec = "gvas"
+lossless = true
+
+[[save]]
+file = "unreal/Options.sav"
+game = "Unreal Engine (gvas test corpus)"
+codec = "gvas"
+lossless = true
+
+[[save]]
+file = "unreal/Profile_0.sav"
+game = "Unreal Engine (gvas test corpus)"
+codec = "gvas"
+lossless = true
+
+[[save]]
+file = "unreal/SaveSlot_03.sav"
+game = "Unreal Engine (gvas test corpus)"
+codec = "gvas"
+lossless = true
+
+[[save]]
+file = "unreal/Slot1.sav"
+game = "Unreal Engine (gvas test corpus)"
+codec = "gvas"
+lossless = true
+
+[[save]]
+file = "unreal/Slot2.sav"
+game = "Unreal Engine (gvas test corpus)"
+codec = "gvas"
+lossless = true
+
+[[save]]
+file = "unreal/Slot3.sav"
+game = "Unreal Engine (gvas test corpus)"
+codec = "gvas"
+lossless = true
+
+[[save]]
+file = "unreal/assert_failed.sav"
+game = "Unreal Engine (gvas test corpus)"
+codec = "gvas"
+lossless = true
+
+[[save]]
+file = "unreal/component8.sav"
+game = "Unreal Engine (gvas test corpus)"
+codec = "gvas"
+lossless = true
+
+[[save]]
+file = "unreal/enum_array.sav"
+game = "Unreal Engine (gvas test corpus)"
+codec = "gvas"
+lossless = true
+
+[[save]]
+file = "unreal/features_01.bin"
+game = "Unreal Engine (gvas test corpus)"
+codec = "gvas"
+lossless = true
+
+[[save]]
+file = "unreal/package_version_524.sav"
+game = "Unreal Engine (gvas test corpus)"
+codec = "gvas"
+lossless = true
+
+[[save]]
+file = "unreal/package_version_525.sav"
+game = "Unreal Engine (gvas test corpus)"
+codec = "gvas"
+lossless = true
+
+[[save]]
+file = "unreal/regression_01.bin"
+game = "Unreal Engine (gvas test corpus)"
+codec = "gvas"
+lossless = true
+
+[[save]]
+file = "unreal/ro_64bit_fav.sav"
+game = "Unreal Engine (gvas test corpus)"
+codec = "gvas"
+lossless = true
+
+[[save]]
+file = "unreal/string_table_entry.sav"
+game = "Unreal Engine (gvas test corpus)"
+codec = "gvas"
+lossless = true
+
+[[save]]
+file = "unreal/tagcontainer.sav"
+game = "Unreal Engine (gvas test corpus)"
+codec = "gvas"
+lossless = true
+
+[[save]]
+file = "unreal/text_property_noarray.bin"
+game = "Unreal Engine (gvas test corpus)"
+codec = "gvas"
+lossless = true
+
+[[save]]
+file = "unreal/transform.sav"
+game = "Unreal Engine (gvas test corpus)"
+codec = "gvas"
+lossless = true
+
+[[save]]
+file = "unreal/vector2d.sav"
+game = "Unreal Engine (gvas test corpus)"
+codec = "gvas"
+lossless = true
+
+[[save]]
+file = "unreal/palworld_zlib.sav"
+game = "Palworld"
+codec = "gvas"
+layers = ["Palworld PlZ"]
+lossless = true
+edit = { path = "Version", value = 101 }
+
+[[save]]
+file = "unreal/palworld_zlib_twice.sav"
+game = "Palworld"
+codec = "gvas"
+layers = ["Palworld PlZ"]
+lossless = true
+
+[[save]]
+file = "minecraft/bigtest.nbt"
+game = "Minecraft"
+codec = "nbt"
+layers = ["Gzip"]
+lossless = true
+edit = { path = "intTest", value = 12345 }
+
+[[save]]
+file = "minecraft/scoreboard.dat"
+game = "Minecraft"
+codec = "nbt"
+layers = ["Gzip"]
+lossless = true
+edit = { path = "data.PlayerScores[2].Score", value = 777777 }
+
+[[save]]
+file = "minecraft/chunk.nbt"
+game = "Minecraft"
+codec = "nbt"
+lossless = true
+edit = { path = "Level.xPos", value = 17 }
+
+[[save]]
+file = "minecraft/chunk1.14.nbt"
+game = "Minecraft"
+codec = "nbt"
+lossless = true
+
+[[save]]
+file = "minecraft/21w44a-test1.nbt"
+game = "Minecraft"
+codec = "nbt"
+lossless = true
+
+[[save]]
+file = "minecraft/forge-1.20.1.nbt"
+game = "Minecraft"
+codec = "nbt"
+lossless = true
+
+[[save]]
+file = "slay-the-spire/DEFECT.autosave"
+game = "Slay the Spire"
+app_id = 646570
+codec = "json"
+layers = ["Base64", "XOR"]
+lossless = true
+edit = { path = "gold", value = 999 }
+
+[[save]]
+file = "slay-the-spire/test.autosave"
+game = "Slay the Spire"
+codec = "json"
+layers = ["Base64", "XOR"]
+lossless = true
+
+[[save]]
+file = "repo/test_save_file.es3"
+game = "R.E.P.O."
+app_id = 3241660
+codec = "json"
+layers = ["Easy Save 3"]
+lossless = true
+edit = { path = "timePlayed.value", value = 9999.5 }
+
+[[save]]
+file = "strike-force-heroes/Example.sfh"
+game = "Strike Force Heroes"
+codec = "json"
+layers = ["Easy Save 3"]
+lossless = true
+edit = { path = "Misc.value.newSkill", value = 7 }
+
+[[save]]
+file = "stardew-valley/Dristan_1458278710"
+game = "Stardew Valley"
+codec = "xml"
+lossless = true
+
+[[save]]
+file = "stardew-valley/Rey_1458536597"
+game = "Stardew Valley"
+codec = "xml"
+lossless = true
+edit = { path = "player.money", value = 999999 }
+
+[[save]]
+file = "terraria/Gwent.plr"
+game = "Terraria (player)"
+app_id = 105600
+codec = "raw"
+layers = ["AES"]
+lossless = true
+
+[[save]]
+file = "terraria/Mount_Holly.wld"
+game = "Terraria (world)"
+app_id = 105600
+codec = "raw"
+lossless = true
+
+[[save]]
+file = "sugarcube/demo-story.save"
+game = "SugarCube (Twine)"
+codec = "json"
+layers = ["LZString"]
+lossless = true
+edit = { path = "state.delta[0].variables.gold", value = 500 }
