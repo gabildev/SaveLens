@@ -194,10 +194,10 @@ impl Daemon {
          -> EngineResult<()> {
             *games = self.games()?;
             for g in games.iter() {
-                if !watched.contains_key(&g.id) {
+                if let std::collections::hash_map::Entry::Vacant(slot) = watched.entry(g.id) {
                     match watcher.watch(&g.save_root, RecursiveMode::Recursive) {
                         Ok(()) => {
-                            watched.insert(g.id, (g.save_root.clone(), g.name.clone()));
+                            slot.insert((g.save_root.clone(), g.name.clone()));
                             let _ = events.send(DaemonEvent::Watching {
                                 game: g.name.clone(),
                                 root: g.save_root.clone(),

@@ -103,6 +103,14 @@ pub struct TrainerReport {
     pub commit: Option<CommitId>,
 }
 
+/// A file opened for editing.
+struct EditSession {
+    path: PathBuf,
+    original: Vec<u8>,
+    ctx: DetectContext,
+    opened: OpenedSave,
+}
+
 /// Resolves aliases from the cheat table for one file.
 struct CheatAliases {
     by_path: HashMap<String, String>,
@@ -673,17 +681,14 @@ impl Engine {
         Ok((path, bytes, ctx, opened))
     }
 
-    fn finish_edit(
-        &self,
-        game: &GameRecord,
-        rel: &str,
-        path: &Path,
-        original: &[u8],
-        ctx: &DetectContext,
-        opened: &OpenedSave,
-        kind: CommitKind,
-        reason: &str,
-    ) -> EngineResult<EditReport> {
+    fn finish_edit(&self, game: &GameRecord, rel: &str, session: EditSession, kind: CommitKind, reason: &str) -> EngineResult<EditReport> {
+        let EditSession {
+            path,
+            original,
+            ctx,
+            opened,
+        } = session;
+        let (path, original, ctx, opened) = (path.as_path(), original.as_slice(), &ctx, &opened);
         let mode = opened.edit_mode();
         let new = opened.encode_verified(&self.pipeline, ctx)?;
         if new == original {
@@ -729,7 +734,7 @@ impl Engine {
                 format!("edit {location} = {value}")
             }
         };
-        self.finish_edit(&game, &rel, &path, &original, &ctx, &opened, CommitKind::Edit, &reason)
+        self.finish_edit(&game, &rel, EditSession { path, original, ctx, opened }, CommitKind::Edit, &reason)
     }
 
     /// Replaces the whole semantic tree of a file (GUI tree editor).
@@ -739,7 +744,7 @@ impl Engine {
         let raw = matches!(root, Node::RawRegion(_));
         let (path, original, ctx, mut opened) = self.open_for_edit(&game, &rel, raw, raw)?;
         opened.apply_ast(root)?;
-        self.finish_edit(&game, &rel, &path, &original, &ctx, &opened, CommitKind::Edit, reason)
+        self.finish_edit(&game, &rel, EditSession { path, original, ctx, opened }, CommitKind::Edit, reason)
     }
 
     /// Surgical cherry-pick of sub-trees from an older revision into the file on disk.
@@ -763,7 +768,7 @@ impl Engine {
         opened.apply_ast(&root)?;
         let names: Vec<String> = report.applied.iter().map(|p| p.to_string()).collect();
         let reason = format!("cherry-pick {} from {from_rev}", names.join(", "));
-        self.finish_edit(&game, &rel, &path, &original, &ctx, &opened, CommitKind::CherryPick, &reason)
+        self.finish_edit(&game, &rel, EditSession { path, original, ctx, opened }, CommitKind::CherryPick, &reason)
     }
 
     /// Panic restore + a `restore` commit recording the restored state.
