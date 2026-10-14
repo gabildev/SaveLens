@@ -1,0 +1,232 @@
+# SaveLens builtin save-path rules (Ludusavi-style templates).
+#
+# Placeholders: <home> <base> (install dir) <game> (installdir name) <root> (Steam root)
+# <storeUserId> (matches any Steam user id) <xdgData> <xdgConfig> <winAppData>
+# <winLocalAppData> <winLocalAppDataLow> <winDocuments> <winSavedGames> <winPublic>.
+#
+# `os = "windows"` paths apply on Windows and to Proton games on Linux (resolved inside the
+# Wine prefix); `os = "linux"` paths apply to native Linux builds; `os = "any"` always applies.
+# `patterns` are globs matched against file paths relative to the save root.
+
+[[game]]
+id = "stardew-valley"
+name = "Stardew Valley"
+app_ids = [413150]
+patterns = ["*"]
+paths = [
+  { path = "<winAppData>/StardewValley/Saves", os = "windows" },
+  { path = "<xdgConfig>/StardewValley/Saves", os = "linux" },
+]
+
+[[game]]
+id = "terraria"
+name = "Terraria"
+app_ids = [105600]
+patterns = ["*.plr", "*.wld", "*.bak", "*.twld", "*.tplr", "*.bak2"]
+paths = [
+  { path = "<winDocuments>/My Games/Terraria/Players", os = "windows" },
+  { path = "<winDocuments>/My Games/Terraria/Worlds", os = "windows" },
+  { path = "<xdgData>/Terraria/Players", os = "linux" },
+  { path = "<xdgData>/Terraria/Worlds", os = "linux" },
+]
+
+[[game]]
+id = "hollow-knight"
+name = "Hollow Knight"
+app_ids = [367520]
+patterns = ["user*.dat", "user*.dat.bak*"]
+paths = [
+  { path = "<winLocalAppDataLow>/Team Cherry/Hollow Knight", os = "windows" },
+  { path = "<xdgConfig>/unity3d/Team Cherry/Hollow Knight", os = "linux" },
+]
+
+[[game]]
+id = "elden-ring"
+name = "ELDEN RING"
+app_ids = [1245620]
+patterns = ["ER0000.*"]
+paths = [{ path = "<winAppData>/EldenRing/<storeUserId>", os = "windows" }]
+
+[[game]]
+id = "dark-souls-3"
+name = "DARK SOULS III"
+app_ids = [374320]
+patterns = ["DS30000.*"]
+paths = [{ path = "<winAppData>/DarkSoulsIII/<storeUserId>", os = "windows" }]
+
+[[game]]
+id = "sekiro"
+name = "Sekiro: Shadows Die Twice"
+app_ids = [814380]
+patterns = ["S0000.*"]
+paths = [{ path = "<winAppData>/Sekiro/<storeUserId>", os = "windows" }]
+
+[[game]]
+id = "hades"
+name = "Hades"
+app_ids = [1145360]
+patterns = ["*.sav", "*.sav.bak*"]
+paths = [{ path = "<winDocuments>/Saved Games/Hades", os = "windows" }]
+
+[[game]]
+id = "celeste"
+name = "Celeste"
+app_ids = [504230]
+patterns = ["*.celeste"]
+paths = [
+  { path = "<base>/Saves", os = "windows" },
+  { path = "<xdgData>/Celeste/Saves", os = "linux" },
+]
+
+[[game]]
+id = "valheim"
+name = "Valheim"
+app_ids = [892970]
+patterns = ["characters/*", "characters_local/*", "worlds/*", "worlds_local/*"]
+paths = [
+  { path = "<winLocalAppDataLow>/IronGate/Valheim", os = "windows" },
+  { path = "<xdgConfig>/unity3d/IronGate/Valheim", os = "linux" },
+]
+
+[[game]]
+id = "satisfactory"
+name = "Satisfactory"
+app_ids = [526870]
+patterns = ["*.sav", "*.sav.bak"]
+paths = [{ path = "<winLocalAppData>/FactoryGame/Saved/SaveGames", os = "windows" }]
+
+[[game]]
+id = "palworld"
+name = "Palworld"
+app_ids = [1623730]
+patterns = ["*.sav"]
+paths = [{ path = "<winLocalAppData>/Pal/Saved/SaveGames", os = "windows" }]
+
+[[game]]
+id = "cyberpunk-2077"
+name = "Cyberpunk 2077"
+app_ids = [1091500]
+patterns = ["*/sav.dat", "*/metadata.*.json", "*/screenshot.png", "UserSettings.json"]
+paths = [{ path = "<winSavedGames>/CD Projekt Red/Cyberpunk 2077", os = "windows" }]
+
+[[game]]
+id = "the-witcher-3"
+name = "The Witcher 3: Wild Hunt"
+app_ids = [292030]
+patterns = ["*.sav", "*.png"]
+paths = [{ path = "<winDocuments>/The Witcher 3/gamesaves", os = "windows" }]
+
+[[game]]
+id = "skyrim-special-edition"
+name = "The Elder Scrolls V: Skyrim Special Edition"
+app_ids = [489830]
+patterns = ["*.ess", "*.skse"]
+paths = [{ path = "<winDocuments>/My Games/Skyrim Special Edition/Saves", os = "windows" }]
+
+[[game]]
+id = "fallout-4"
+name = "Fallout 4"
+app_ids = [377160]
+patterns = ["*.fos", "*.f4se"]
+paths = [{ path = "<winDocuments>/My Games/Fallout4/Saves", os = "windows" }]
+
+[[game]]
+id = "baldurs-gate-3"
+name = "Baldur's Gate 3"
+app_ids = [1086940]
+patterns = ["*"]
+paths = [
+  { path = "<winLocalAppData>/Larian Studios/Baldur's Gate 3/PlayerProfiles", os = "windows" },
+]
+
+[[game]]
+id = "rimworld"
+name = "RimWorld"
+app_ids = [294100]
+patterns = ["*.rws"]
+paths = [
+  { path = "<winLocalAppDataLow>/Ludeon Studios/RimWorld by Ludeon Studios/Saves", os = "windows" },
+  { path = "<xdgConfig>/unity3d/Ludeon Studios/RimWorld by Ludeon Studios/Saves", os = "linux" },
+]
+
+[[game]]
+id = "factorio"
+name = "Factorio"
+app_ids = [427520]
+patterns = ["*.zip"]
+paths = [
+  { path = "<winAppData>/Factorio/saves", os = "windows" },
+  { path = "<home>/.factorio/saves", os = "linux" },
+]
+
+[[game]]
+id = "deep-rock-galactic"
+name = "Deep Rock Galactic"
+app_ids = [548430]
+patterns = ["*.sav"]
+paths = [{ path = "<base>/FSD/Saved/SaveGames", os = "any" }]
+
+[[game]]
+id = "subnautica"
+name = "Subnautica"
+app_ids = [264710]
+patterns = ["*"]
+paths = [{ path = "<base>/SNAppData/SavedGames", os = "any" }]
+
+[[game]]
+id = "slay-the-spire"
+name = "Slay the Spire"
+app_ids = [646570]
+patterns = ["*"]
+paths = [
+  { path = "<base>/saves", os = "any" },
+  { path = "<base>/preferences", os = "any" },
+]
+
+[[game]]
+id = "phasmophobia"
+name = "Phasmophobia"
+app_ids = [739630]
+patterns = ["SaveFile.txt", "*.txt"]
+paths = [{ path = "<winLocalAppDataLow>/Kinetic Games/Phasmophobia", os = "windows" }]
+
+[[game]]
+id = "undertale"
+name = "Undertale"
+app_ids = [391540]
+patterns = ["file*", "undertale.ini", "config.ini"]
+paths = [
+  { path = "<winLocalAppData>/UNDERTALE", os = "windows" },
+  { path = "<xdgConfig>/UNDERTALE", os = "linux" },
+]
+
+[[game]]
+id = "dont-starve-together"
+name = "Don't Starve Together"
+app_ids = [322330]
+patterns = ["*"]
+paths = [
+  { path = "<winDocuments>/Klei/DoNotStarveTogether", os = "windows" },
+  { path = "<home>/.klei/DoNotStarveTogether", os = "linux" },
+]
+
+[[game]]
+id = "cuphead"
+name = "Cuphead"
+app_ids = [268910]
+patterns = ["cuphead_player_data_*.sav"]
+paths = [{ path = "<winAppData>/Cuphead", os = "windows" }]
+
+[[game]]
+id = "outer-wilds"
+name = "Outer Wilds"
+app_ids = [753640]
+patterns = ["*"]
+paths = [{ path = "<winLocalAppDataLow>/Mobius Digital/Outer Wilds/SteamSaves", os = "windows" }]
+
+[[game]]
+id = "risk-of-rain-2"
+name = "Risk of Rain 2"
+app_ids = [632360]
+patterns = ["*.xml"]
+paths = [{ path = "<root>/userdata/<storeUserId>/632360/remote/UserProfiles", os = "any" }]
