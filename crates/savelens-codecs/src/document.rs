@@ -16,19 +16,43 @@ use crate::error::{CodecError, CodecResult};
 /// Detection confidence, 0 (no) to 100 (certain).
 pub type Confidence = u8;
 
+/// Maximum nesting depth of container formats (zip in BND4 in …).
+pub const MAX_NESTING: usize = 4;
+
 /// Information available while detecting a codec.
-#[derive(Debug, Clone, Default)]
+#[derive(Clone, Default)]
 pub struct DetectContext {
     /// File name (without directory), if known.
     pub file_name: Option<String>,
     /// Steam AppID of the game, if known.
     pub app_id: Option<u32>,
+    /// The pipeline that is decoding this payload. Container codecs (ZIP,
+    /// BND4, Anvil regions, …) use it to open their entries with every
+    /// envelope layer and structural codec.
+    pub pipeline: Option<crate::pipeline::EnvelopePipeline>,
+    /// Container nesting depth of this payload (0 = top-level file).
+    pub depth: usize,
+}
+
+impl fmt::Debug for DetectContext {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("DetectContext")
+            .field("file_name", &self.file_name)
+            .field("app_id", &self.app_id)
+            .field("depth", &self.depth)
+            .finish()
+    }
 }
 
 impl DetectContext {
     /// Context for a file name.
     pub fn for_file(name: impl Into<String>) -> Self {
-        DetectContext { file_name: Some(name.into()), app_id: None }
+        DetectContext { file_name: Some(name.into()), ..DetectContext::default() }
+    }
+
+    /// Context for a file name and Steam AppID.
+    pub fn for_game(name: impl Into<String>, app_id: Option<u32>) -> Self {
+        DetectContext { file_name: Some(name.into()), app_id, ..DetectContext::default() }
     }
 
     /// Lower-case file extension without the dot.
@@ -36,6 +60,27 @@ impl DetectContext {
         let name = self.file_name.as_deref()?;
         let (_, ext) = name.rsplit_once('.')?;
         Some(ext.to_ascii_lowercase())
+    }
+
+    /// Context for an entry of a container (same game, one level deeper).
+    pub fn nested(&self, entry_name: &str) -> DetectContext {
+        let base = entry_name.rsplit(['/', '\\']).next().unwrap_or(entry_name);
+        DetectContext {
+            file_name: Some(base.to_string()),
+            app_id: self.app_id,
+            pipeline: self.pipeline.clone(),
+            depth: self.depth + 1,
+        }
+    }
+
+    /// True when containers may still open nested entries.
+    pub fn can_nest(&self) -> bool {
+        self.depth < MAX_NESTING
+    }
+
+    /// The pipeline to use for nested payloads (built-in one if none is attached).
+    pub fn pipeline(&self) -> crate::pipeline::EnvelopePipeline {
+        self.pipeline.clone().unwrap_or_else(crate::pipeline::EnvelopePipeline::builtin)
     }
 }
 

@@ -193,9 +193,19 @@ impl EnvelopePipeline {
         Box::new(RawDocument::new(payload.to_vec()))
     }
 
+    /// Copy of `ctx` with this pipeline attached (for container codecs).
+    fn attach(&self, ctx: &DetectContext) -> DetectContext {
+        let mut c = ctx.clone();
+        if c.pipeline.is_none() {
+            c.pipeline = Some(self.clone());
+        }
+        c
+    }
+
     /// Opens a save file: peels layers, parses the payload and runs the
     /// round-trip gate.
     pub fn open(&self, data: &[u8], ctx: &DetectContext) -> CodecResult<OpenedSave> {
+        let ctx = &self.attach(ctx);
         let (layers, payload) = self.peel(data, ctx);
         let mut notes = Vec::new();
         let doc = self.decode_payload(&payload, ctx, &mut notes);
@@ -204,6 +214,7 @@ impl EnvelopePipeline {
 
     /// Opens with a forced structural codec (layers are still peeled).
     pub fn open_with_codec(&self, data: &[u8], ctx: &DetectContext, codec_id: &str) -> CodecResult<OpenedSave> {
+        let ctx = &self.attach(ctx);
         let codec = self.registry.get(codec_id).ok_or_else(|| {
             CodecError::NoCodec(format!("unknown codec `{codec_id}`; available: {:?}", self.registry.ids()))
         })?;
@@ -214,6 +225,7 @@ impl EnvelopePipeline {
 
     /// Opens with the raw codec (layers are still peeled).
     pub fn open_raw(&self, data: &[u8], ctx: &DetectContext) -> OpenedSave {
+        let ctx = &self.attach(ctx);
         let (layers, payload) = self.peel(data, ctx);
         let doc: Box<dyn Document> = Box::new(RawDocument::new(payload.clone()));
         OpenedSave::assemble(data, layers, payload, doc, Vec::new())

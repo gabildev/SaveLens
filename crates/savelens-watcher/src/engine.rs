@@ -252,6 +252,7 @@ impl Engine {
         DetectContext {
             file_name: Path::new(rel).file_name().map(|n| n.to_string_lossy().to_string()),
             app_id: game.app_id,
+            ..DetectContext::default()
         }
     }
 
@@ -938,7 +939,11 @@ impl Engine {
     /// Opens an arbitrary file (not necessarily tracked) for inspection.
     pub fn inspect_path(&self, path: &Path) -> EngineResult<OpenedSave> {
         let bytes = fs::read(path).map_err(|e| EngineError::io(path, e))?;
-        let ctx = DetectContext { file_name: path.file_name().map(|n| n.to_string_lossy().to_string()), app_id: None };
+        let ctx = DetectContext {
+            file_name: path.file_name().map(|n| n.to_string_lossy().to_string()),
+            app_id: None,
+            ..DetectContext::default()
+        };
         Ok(self.pipeline.open(&bytes, &ctx)?)
     }
 }

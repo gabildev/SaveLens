@@ -1,5 +1,6 @@
 //! Structural codecs.
 
+pub mod container;
 pub mod gvas;
 pub mod ini;
 pub mod json;

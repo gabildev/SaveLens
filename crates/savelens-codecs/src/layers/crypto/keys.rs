@@ -334,7 +334,8 @@ mod tests {
     #[test]
     fn candidate_order() {
         let db = KeyDatabase::builtin();
-        let ctx = DetectContext { file_name: Some("SaveFile.txt".into()), app_id: Some(739630) };
+        let ctx =
+            DetectContext { file_name: Some("SaveFile.txt".into()), app_id: Some(739630), ..DetectContext::default() };
         let c = db.candidates(&ctx);
         assert_eq!(c[0].name, "phasmophobia");
         let ctx = DetectContext::for_file("slot1.es3");
