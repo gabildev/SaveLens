@@ -1,0 +1,6 @@
+[package]
+name = "savelens-tui"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]

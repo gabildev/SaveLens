@@ -1,0 +1,6 @@
+[package]
+name = "savelens-cas"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
