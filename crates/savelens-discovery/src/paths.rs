@@ -364,6 +364,8 @@ mod tests {
         cfg
     }
 
+    // Uses Unix path literals to simulate a Linux host.
+    #[cfg(unix)]
     #[test]
     fn expansion_native_vs_proton() {
         let home = Path::new("/h");

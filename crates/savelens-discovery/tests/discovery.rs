@@ -7,6 +7,11 @@ use savelens_discovery::{
     discover, DiscoveryConfig, Engine, GameRuntime, HostPlatform, LocationSource, WindowsEnv,
 };
 
+/// A path as written inside a VDF string (backslashes escaped, as Steam does on Windows).
+fn vdf_path(p: &Path) -> String {
+    p.display().to_string().replace('\\', "\\\\")
+}
+
 fn write(path: &Path, content: &str) {
     fs::create_dir_all(path.parent().unwrap()).unwrap();
     fs::write(path, content).unwrap();
@@ -32,7 +37,7 @@ struct Fake {
 /// Home with a Steam root in `~/.local/share/Steam` and a second library outside the home.
 fn fake_steam() -> Fake {
     let tmp = tempfile::tempdir().unwrap();
-    let base = fs::canonicalize(tmp.path()).unwrap();
+    let base = savelens_discovery::normalize_path(tmp.path());
     let home = base.join("home");
     let root = home.join(".local/share/Steam");
     let lib2 = base.join("library2");
@@ -42,8 +47,8 @@ fn fake_steam() -> Fake {
         &root.join("steamapps/libraryfolders.vdf"),
         &format!(
             "\"libraryfolders\"\n{{\n\t\"0\"\n\t{{\n\t\t\"path\"\t\t\"{}\"\n\t\t\"label\"\t\t\"\"\n\t\t\"apps\"\n\t\t{{\n\t\t\t\"1000001\"\t\t\"100\"\n\t\t\t\"1493710\"\t\t\"200\"\n\t\t}}\n\t}}\n\t\"1\"\n\t{{\n\t\t\"path\"\t\t\"{}\"\n\t\t\"label\"\t\t\"Games2\"\n\t\t\"apps\"\n\t\t{{\n\t\t\t\"413150\"\t\t\"300\"\n\t\t\t\"1000002\"\t\t\"400\"\n\t\t}}\n\t}}\n}}\n",
-            root.display(),
-            lib2.display()
+            vdf_path(&root),
+            vdf_path(&lib2)
         ),
     );
 
@@ -233,7 +238,7 @@ fn steam_symlink_roots_are_deduplicated() {
 #[test]
 fn flatpak_root_and_old_libraryfolders_format() {
     let tmp = tempfile::tempdir().unwrap();
-    let base = fs::canonicalize(tmp.path()).unwrap();
+    let base = savelens_discovery::normalize_path(tmp.path());
     let home = base.join("home");
     let root = home.join(".var/app/com.valvesoftware.Steam/.local/share/Steam");
     let lib = base.join("old_lib");
@@ -242,8 +247,8 @@ fn flatpak_root_and_old_libraryfolders_format() {
         &root.join("steamapps/libraryfolders.vdf"),
         &format!(
             "\"LibraryFolders\"\n{{\n\t\"TimeNextStatsReport\"\t\t\"1\"\n\t\"1\"\t\t\"{}\"\n\t\"2\"\t\t\"{}\"\n}}\n",
-            lib.display(),
-            base.join("missing_lib").display()
+            vdf_path(&lib),
+            vdf_path(&base.join("missing_lib"))
         ),
     );
     manifest(&lib, 646570, "Slay the Spire", "SlayTheSpire");
@@ -278,7 +283,7 @@ fn flatpak_root_and_old_libraryfolders_format() {
 #[test]
 fn windows_placeholders_resolve_against_windows_env() {
     let tmp = tempfile::tempdir().unwrap();
-    let base = fs::canonicalize(tmp.path()).unwrap();
+    let base = savelens_discovery::normalize_path(tmp.path());
     let steam = base.join("Program Files (x86)/Steam");
     let profile = base.join("Users/alice");
     manifest(&steam, 413150, "Stardew Valley", "Stardew Valley");
