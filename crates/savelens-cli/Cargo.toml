@@ -1,6 +1,40 @@
 [package]
 name = "savelens-cli"
+description = "SaveLens command-line interface: semantic save versioning, disk scanner, cherry-pick and panic restore"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[[bin]]
+name = "savelens"
+path = "src/main.rs"
+
+[features]
+default = ["tui", "gui", "overlay"]
+tui = ["dep:savelens-tui"]
+gui = ["dep:savelens-gui"]
+overlay = ["dep:savelens-overlay"]
 
 [dependencies]
+savelens-core.workspace = true
+savelens-codecs.workspace = true
+savelens-cas.workspace = true
+savelens-discovery.workspace = true
+savelens-watcher.workspace = true
+savelens-tui = { workspace = true, optional = true }
+savelens-gui = { workspace = true, optional = true }
+savelens-overlay = { workspace = true, optional = true }
+anyhow.workspace = true
+clap.workspace = true
+ctrlc.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+crossbeam-channel.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
