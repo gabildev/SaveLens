@@ -1,6 +1,26 @@
 [package]
 name = "savelens-tui"
+description = "SaveLens terminal UI (Games, Timeline, Save-State Scanner, AST explorer & surgical cherry-pick)"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
 
 [dependencies]
+savelens-core.workspace = true
+savelens-codecs.workspace = true
+savelens-cas.workspace = true
+savelens-watcher.workspace = true
+savelens-discovery.workspace = true
+ratatui.workspace = true
+crossterm.workspace = true
+nucleo-matcher.workspace = true
+anyhow.workspace = true
+chrono.workspace = true
+tracing.workspace = true
+crossbeam-channel.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

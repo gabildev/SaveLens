@@ -78,6 +78,7 @@ impl HotkeyService {
     /// (e.g. no X11 display) or a key is already taken.
     pub fn start(cfg: &HotkeyConfig) -> EngineResult<HotkeyService> {
         let bindings = parse_bindings(cfg)?;
+        display_available()?;
         let (stop_tx, stop_rx) = bounded::<()>(1);
         let (act_tx, act_rx) = unbounded::<HotkeyAction>();
         let (ready_tx, ready_rx) = bounded::<Result<(), String>>(1);
@@ -154,6 +155,23 @@ impl Drop for HotkeyService {
     }
 }
 
+/// The X11 backend of `global-hotkey` crashes the process when no display is
+/// reachable, so refuse early with a clear error instead.
+#[cfg(all(unix, not(target_os = "macos")))]
+fn display_available() -> EngineResult<()> {
+    match std::env::var_os("DISPLAY") {
+        Some(d) if !d.is_empty() => Ok(()),
+        _ => Err(EngineError::Hotkeys(
+            "no X11 display (DISPLAY is not set); global hotkeys need X11 or XWayland".into(),
+        )),
+    }
+}
+
+#[cfg(not(all(unix, not(target_os = "macos"))))]
+fn display_available() -> EngineResult<()> {
+    Ok(())
+}
+
 #[cfg(windows)]
 fn pump_windows_messages() {
     use windows_sys::Win32::UI::WindowsAndMessaging::{DispatchMessageW, PeekMessageW, TranslateMessage, MSG, PM_REMOVE};
@@ -171,6 +189,14 @@ fn pump_windows_messages() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(all(unix, not(target_os = "macos")))]
+    #[test]
+    fn missing_display_is_an_error_not_a_crash() {
+        if std::env::var_os("DISPLAY").is_none() {
+            assert!(matches!(HotkeyService::start(&HotkeyConfig::default()), Err(EngineError::Hotkeys(_))));
+        }
+    }
 
     #[test]
     fn default_bindings_parse() {
