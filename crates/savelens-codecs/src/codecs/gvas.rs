@@ -915,7 +915,7 @@ fn elem_candidates(desc: &TypeDesc, elem_size: Option<usize>, role: Role, fmt: F
 }
 
 fn per_elem(total: usize, count: usize) -> Option<usize> {
-    (count > 0 && total % count == 0).then(|| total / count)
+    (count > 0 && total.is_multiple_of(count)).then(|| total / count)
 }
 
 fn read_count(r: &mut ByteReader<'_>, ctx: &str) -> CodecResult<usize> {

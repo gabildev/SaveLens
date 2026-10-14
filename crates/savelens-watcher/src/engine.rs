@@ -662,10 +662,12 @@ impl Engine {
         let opened = match opened.edit_mode() {
             EditMode::Structural => opened,
             EditMode::RawInPlace if allow_raw => opened.into_raw_mode(),
-            EditMode::RawInPlace => return Err(EngineError::GateBlocked(format!(
+            EditMode::RawInPlace => {
+                return Err(EngineError::GateBlocked(format!(
                 "{rel}: the {} codec does not reproduce the file bit for bit; enable raw in-place mode to edit offsets",
                 opened.codec_id()
-            ))),
+            )))
+            }
             EditMode::BackupRestoreOnly => {
                 return Err(EngineError::GateBlocked(format!(
                     "{rel}: round-trip failed ({:?}); only full backup/restore is allowed",

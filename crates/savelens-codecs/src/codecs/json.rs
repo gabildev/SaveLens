@@ -578,7 +578,7 @@ fn try_nested(st: &JStr, outer: &JsonStyle, depth: usize) -> Option<Nested> {
         return None;
     }
     let url = v.bytes().any(|b| b == b'-' || b == b'_');
-    let padded = v.ends_with('=') || v.len() % 4 == 0;
+    let padded = v.ends_with('=') || v.len().is_multiple_of(4);
     let variant = match (url, padded) {
         (false, true) => Base64Variant::Standard,
         (false, false) => Base64Variant::StandardNoPad,

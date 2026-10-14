@@ -316,7 +316,7 @@ fn panic_restore_action_restores_the_original_bytes() {
     app.request_panic(true).unwrap();
     let p = app.panic_prompt().unwrap();
     assert!(p.tag.starts_with("safety/pre-mutation-"), "{}", p.tag);
-    assert_eq!(p.path, fx.slot());
+    assert_eq!(p.path, savelens_discovery::normalize_path(&fx.slot()));
     assert_eq!(p.scope, savelens_cas::PanicScope::Game(fx.game));
     app.confirm_panic().unwrap();
     assert!(app.panic_prompt().is_none());

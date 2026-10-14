@@ -424,7 +424,7 @@ fn load_table(conn: &Connection, name: &str, without_rowid: bool) -> CodecResult
 /// is never silently read with zero-filled pages.
 fn check_size(bytes: &[u8], header: &Header) -> CodecResult<()> {
     let page = header.page_size as usize;
-    if bytes.len() % page != 0 {
+    if !bytes.len().is_multiple_of(page) {
         let pages = bytes.len() / page;
         return Err(CodecError::Truncated {
             codec: CODEC,

@@ -146,8 +146,8 @@ impl Alignment {
     fn accepts(self, offset: usize, ty: ScanType) -> bool {
         match self {
             Alignment::Unaligned => true,
-            Alignment::Natural => offset % ty.width().unwrap_or(1) == 0,
-            Alignment::Fixed(n) => offset % n.max(1) == 0,
+            Alignment::Natural => offset.is_multiple_of(ty.width().unwrap_or(1)),
+            Alignment::Fixed(n) => offset.is_multiple_of(n.max(1)),
         }
     }
 }

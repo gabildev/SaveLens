@@ -66,7 +66,7 @@ fn zero_pad(data: &[u8]) -> Vec<u8> {
 /// AES decryption.
 pub fn aes_decrypt(mode: AesMode, key: &[u8], iv: &[u8; 16], padding: Padding, data: &[u8]) -> CodecResult<Vec<u8>> {
     let scheme = "AES";
-    if mode != AesMode::Ctr && data.len() % 16 != 0 {
+    if mode != AesMode::Ctr && !data.len().is_multiple_of(16) {
         return Err(crypto_err(scheme, format!("ciphertext length {} is not a multiple of 16", data.len())));
     }
     with_aes!(key, scheme, |C| {
@@ -112,7 +112,7 @@ pub fn aes_encrypt(mode: AesMode, key: &[u8], iv: &[u8; 16], padding: Padding, d
         (AesMode::Ctr, _) | (_, Padding::Pkcs7) => data.to_vec(),
         (_, Padding::Zero) => zero_pad(data),
         (_, Padding::None) => {
-            if data.len() % 16 != 0 {
+            if !data.len().is_multiple_of(16) {
                 return Err(crypto_err(
                     scheme,
                     format!("payload of {} bytes is not block aligned and the profile has no padding", data.len()),
@@ -216,7 +216,7 @@ pub fn es3_key(password: &[u8], iv: &[u8; 16]) -> [u8; 16] {
 
 /// Decrypts an Easy Save 3 payload (`IV(16) || AES-128-CBC-PKCS7(ciphertext)`).
 pub fn es3_decrypt(password: &[u8], data: &[u8]) -> CodecResult<([u8; 16], Vec<u8>)> {
-    if data.len() < 32 || (data.len() - 16) % 16 != 0 {
+    if data.len() < 32 || !(data.len() - 16).is_multiple_of(16) {
         return Err(crypto_err("ES3", "payload is not IV + whole AES blocks"));
     }
     let mut iv = [0u8; 16];

@@ -466,7 +466,7 @@ fn quitting_and_watcher_daemon() {
     }
     let s = e.render(120, 40);
     assert!(s.contains("running (embedded"), "{s}");
-    if std::env::var_os("DISPLAY").is_none_or(|d| d.is_empty()) {
+    if cfg!(target_os = "linux") && std::env::var_os("DISPLAY").is_none_or(|d| d.is_empty()) {
         assert!(e.app.messages().iter().any(|m| m.starts_with("Global hotkeys unavailable")), "{:?}", e.app.messages());
     }
     // q asks for confirmation while the daemon runs; n keeps it running.
@@ -485,11 +485,14 @@ fn quitting_and_watcher_daemon() {
     assert!(!e.app.daemon_running());
 }
 
+#[cfg(target_os = "linux")]
 fn write(path: &Path, content: &str) {
     fs::create_dir_all(path.parent().unwrap()).unwrap();
     fs::write(path, content).unwrap();
 }
 
+// The fake Steam tree uses the Linux layout (`~/.local/share/Steam`, `xdgConfig`).
+#[cfg(target_os = "linux")]
 #[test]
 fn discovery_runs_in_background_and_tracks_with_enter() {
     let mut e = env();

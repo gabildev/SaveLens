@@ -91,7 +91,7 @@ pub fn parse(data: &[u8]) -> Option<(Base64Layout, Vec<u8>)> {
     if pad > 2 || joined[..joined.len() - pad].contains(&b'=') {
         return None;
     }
-    let variant = match (url, pad > 0 || joined.len() % 4 == 0) {
+    let variant = match (url, pad > 0 || joined.len().is_multiple_of(4)) {
         (false, true) => Base64Variant::Standard,
         (false, false) => Base64Variant::StandardNoPad,
         (true, true) => Base64Variant::UrlSafe,

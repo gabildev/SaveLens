@@ -58,7 +58,7 @@ fn top_value(root: &Element) -> CodecResult<usize> {
 fn dict_entries(e: &Element) -> CodecResult<Vec<(String, usize)>> {
     no_text(e)?;
     let kids: Vec<&Element> = e.child_elements().collect();
-    if kids.len() % 2 != 0 {
+    if !kids.len().is_multiple_of(2) {
         return Err(CodecError::malformed(CODEC, 0, "<dict> has a key without a value"));
     }
     let mut raw_keys = Vec::with_capacity(kids.len() / 2);
